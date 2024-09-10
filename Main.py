@@ -27,10 +27,19 @@ red = (255, 0, 0)
 blue = (0, 0, 255)
 gray = (128, 128, 128)
 
+# Define the Gun class to support multiple types of guns
+class Gun:
+    def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed):
+        self.name = name
+        self.image = pygame.image.load(image_path).convert_alpha()
+        self.bullet_image = bullet_image
+        self.damage = damage
+        self.fire_rate = fire_rate  # Cooldown between shots in milliseconds
+        self.bullet_speed = bullet_speed
 
 # Define the Player class
 class Player(pygame.sprite.Sprite):
-    def __init__(self, x, y, image_path):
+    def __init__(self, x, y, image_path, gun):
         super().__init__()
         self.x = x
         self.y = y
@@ -61,7 +70,19 @@ class Player(pygame.sprite.Sprite):
         self.blink_duration = 300  # Blink duration in milliseconds
         self.blink_start_time = 0
 
-    def update(self, keys, obstacles, candies, slimes, screen_width, screen_height):
+        # Gun
+        self.gun = gun
+        self.gun_image = self.gun.image
+        self.gun_rect = self.gun_image.get_rect()
+
+        # Shooting cooldown
+        self.last_shot_time = 0
+
+        # Gun rotation variables
+        self.gun_distance_from_player = 40  # Distance of the gun from the player's center
+        self.gun_angle = 0  # Current angle of the gu
+
+    def update(self, keys, obstacles, candies, slimes, screen_width, screen_height, mouse_pos):
         # Movement logic with WASD keys
         if keys[pygame.K_w]:
             self.rect.y -= self.speed
@@ -96,6 +117,9 @@ class Player(pygame.sprite.Sprite):
             # Check if the player can level up
             self.check_level_up()
 
+        # Rotate the gun to face the mouse cursor and position it around the player
+        self.rotate_gun(mouse_pos)
+
         # Damage for player ------------------------------------------
 
         # Check for collisions with slimes and take damage (with cooldown)
@@ -129,6 +153,8 @@ class Player(pygame.sprite.Sprite):
             sys.exit()
 
         # -----------------------------------------------------------
+    def get_hp(self):
+        return self.hp
 
     def gain_xp(self, amount):
         self.xp += amount
@@ -153,6 +179,75 @@ class Player(pygame.sprite.Sprite):
             self.rect.top = 0
         if self.rect.bottom > screen_height:
             self.rect.bottom = screen_height
+
+    def rotate_gun(self, mouse_pos):
+        """Rotate the gun around the player based on the mouse cursor position."""
+        # Get the player's center position
+        player_center = self.rect.center
+
+        # Calculate the angle between the player and the mouse cursor
+        rel_x, rel_y = mouse_pos[0] - player_center[0], mouse_pos[1] - player_center[1]
+        angle = math.degrees(math.atan2(-rel_y, rel_x))  # Negative for counterclockwise rotation
+
+        # Convert angle to radians for trigonometry calculations
+        rad_angle = math.radians(angle)
+
+        # Calculate the new position for the gun around the player
+        gun_x = player_center[0] + self.gun_distance_from_player * math.cos(rad_angle) - self.gun_rect.width // 100
+        gun_y = player_center[1] - self.gun_distance_from_player * math.sin(rad_angle) - self.gun_rect.height // 100
+
+        # Rotate the gun based on the angle
+        rotated_gun_image = pygame.transform.rotate(self.gun.image, angle)
+
+        # Check if the gun should be flipped horizontally based on the angle
+        if 90 < angle < 270 or -270 < angle < -90:
+            # If the gun is on the left side of the player, flip it horizontally
+            rotated_gun_image = pygame.transform.flip(rotated_gun_image, True, True)
+
+
+        # Update the gun's rect to its new position
+        self.rotated_gun = rotated_gun_image
+        self.gun_rect = self.rotated_gun.get_rect(center=(gun_x, gun_y))
+
+    def draw(self, surface):
+        """Draw the player and the rotating gun on the screen."""
+        # First, draw the player
+        surface.blit(self.image, self.rect)
+
+        # Then, draw the gun, ensuring it's drawn after the player
+        surface.blit(self.rotated_gun, self.gun_rect)
+
+    def shoot(self):
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_shot_time >= self.gun.fire_rate:
+            self.last_shot_time = current_time
+            return Bullet(self.gun_rect.center, pygame.mouse.get_pos(), self.gun.bullet_image, self.gun.bullet_speed, self.gun.damage)
+        return None
+
+# Define the Bullet class
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, pos, target, image_path, speed, damage):
+        super().__init__()
+        self.image = pygame.image.load(image_path).convert_alpha()
+        self.rect = self.image.get_rect(center=pos)
+        self.damage = damage
+
+        # Calculate the direction to move towards the target
+        direction_x = target[0] - pos[0]
+        direction_y = target[1] - pos[1]
+        distance = math.hypot(direction_x, direction_y)
+        if distance > 0:
+            self.velocity = (direction_x / distance * speed, direction_y / distance * speed)  # Bullet speed
+        else:
+            self.velocity = (0, 0)
+
+    def update(self):
+        self.rect.x += self.velocity[0]
+        self.rect.y += self.velocity[1]
+
+        # Remove bullet if it's off screen
+        if self.rect.right < 0 or self.rect.left > width or self.rect.bottom < 0 or self.rect.top > height:
+            self.kill()
 
     def get_hp(self):
         return self.hp
@@ -205,14 +300,20 @@ class Slime(pygame.sprite.Sprite):
     def __init__(self, image_path):
         super().__init__()
         self.image = pygame.image.load(image_path).convert_alpha()
-        self.original_image = self.image  # Store the original image for flipping
+        self.original_image = self.image.copy()  # Store the original image for resetting after blinking
         self.rect = self.image.get_rect()
         self.spawn_within_screen()
 
         # Slime attributes
         self.hp = 10
+        self.last_hp = self.hp  # Keep track of the last HP to detect HP loss
         self.speed = 2
         self.direction = 'right'  # Initialize slime facing right
+
+        # Damage blinking attributes
+        self.is_blinking = False
+        self.blink_duration = 300  # Blink duration in milliseconds
+        self.blink_start_time = 0
 
     def spawn_within_screen(self):
         """Spawn slime at a random position within the screen."""
@@ -240,6 +341,36 @@ class Slime(pygame.sprite.Sprite):
         # Move the slime towards the player
         self.rect.x += int(direction_x * self.speed)
         self.rect.y += int(direction_y * self.speed)
+
+    def take_damage(self, damage):
+        """Handles damage and triggers blinking effect."""
+        self.hp -= damage
+        print(f"Slime took {damage} damage. Current HP: {self.hp}")
+
+        # Trigger the blinking effect
+        self.is_blinking = True
+        self.blink_start_time = pygame.time.get_ticks()
+
+        # Tint red manually by setting a solid color
+        red_tinted_image = self.original_image.copy()
+        red_tinted_image.fill((255, 0, 0), special_flags=pygame.BLEND_ADD)  # Tint red with BLEND_ADD
+        self.image = red_tinted_image
+
+        if self.hp <= 0:
+            self.kill()  # Remove the slime when HP reaches 0
+
+    def update(self):
+        """Update the slime, handle movement and the blinking state."""
+        # Handle blinking effect
+        if self.is_blinking:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.blink_start_time > self.blink_duration:
+                self.is_blinking = False
+                # Restore the original image and reapply the correct flip (direction)
+                if self.direction == 'left':
+                    self.image = pygame.transform.flip(self.original_image, True, False)  # Face left again
+                else:
+                    self.image = self.original_image  # Face right
 
 
 # Function to draw the XP bar and level text
@@ -272,13 +403,17 @@ def draw_HP_bar(screen, player):
     screen.blit(text, (bar_x, bar_y + bar_height + 5))
 
 
-# Create the player instance
-player = Player(640, 360, 'Pictures/Morp.png')
+# Create guns
+pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, fire_rate=500, bullet_speed=10)
+
+# Create the player instance with the pistol gun
+player = Player(640, 360, 'Pictures/Morp.png', pistol)
 
 # Create sprite groups
 all_sprites = pygame.sprite.Group()
 all_sprites.add(player)
 
+bullets = pygame.sprite.Group()
 candies = pygame.sprite.Group()
 slimes = pygame.sprite.Group()
 
@@ -376,6 +511,32 @@ def draw_game():
     # Draw all sprites (this includes the player, candies, and slimes)
     all_sprites.draw(screen)
 
+    # Draw the bullets
+    bullets.draw(screen)
+
+def draw_game():
+    # Fill the screen with a background color (white in this case)
+    screen.fill(white)
+
+    # Draw the XP bar in the top-left corner of the screen
+    draw_xp_bar(screen, player)
+
+    # Draw the HP bar in the top-left corner of the screen
+    draw_HP_bar(screen, player)
+
+    # Draw the pause button
+    screen.blit(pause_button, pause_button_rect)
+
+    # Draw all other sprites (this includes the player)
+    all_sprites.draw(screen)
+
+    # Draw the player and the gun
+    player.draw(screen)
+
+    # Draw the bullets
+    bullets.draw(screen)
+
+
 #---------------------------------------------------------------
 
 # Main game loop
@@ -393,6 +554,13 @@ while running:
         if event.type == pygame.MOUSEBUTTONDOWN:
             if pause_button_rect.collidepoint(event.pos):
                 paused = True  # Trigger pause state
+
+        # Check for shooting (left mouse click)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            bullet = player.shoot()
+            if bullet:
+                bullets.add(bullet)
+                all_sprites.add(bullet)
 
         # Spawn a new candy every 5 seconds
         if event.type == candy_spawn_event:
@@ -412,13 +580,25 @@ while running:
     else:
         # Regular game update logic
         keys = pygame.key.get_pressed()
+        mouse_pos = pygame.mouse.get_pos()
 
         # Update the player (pass in the keys, obstacles, candies, and slimes for collision detection)
-        player.update(keys, obstacles, candies, slimes, width, height)
+        player.update(keys, obstacles, candies, slimes, width, height, mouse_pos)
 
-        # Move all slimes towards the player
+        # Update and move all slimes towards the player
         for slime in slimes:
-            slime.move_towards_player(player)
+            slime.move_towards_player(player)  # Move the slime towards the player
+            slime.update()  # Handle blinking effect if damaged
+
+        # Update bullets
+        bullets.update()
+
+        # Check for bullet collisions with slimes
+        for bullet in bullets:
+            slime_hit_list = pygame.sprite.spritecollide(bullet, slimes, False)
+            for slime in slime_hit_list:
+                slime.take_damage(bullet.damage)  # Reduce slime HP and trigger red blink
+                bullet.kill()  # Remove the bullet after hitting a slime
 
         # Draw the game state
         draw_game()
@@ -432,5 +612,7 @@ while running:
 # Quit the game when the loop ends
 pygame.quit()
 sys.exit()
+
+
 
 
