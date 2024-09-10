@@ -11,6 +11,14 @@ width, height = 1280, 720
 screen = pygame.display.set_mode((width, height))
 pygame.display.set_caption("Morp(1)")
 
+# Load the Morp.png image and set it as the window icon
+icon = pygame.image.load('Pictures/Morp.png')
+pygame.display.set_icon(icon)
+
+# Load the pause button image
+pause_button = pygame.image.load('Pictures/Pause.png').convert_alpha()
+pause_button_rect = pause_button.get_rect(topright=(width - 10, 10))  # Top right corner
+
 # Define colors
 white = (255, 255, 255)
 black = (0, 0, 0)
@@ -18,6 +26,7 @@ green = (0, 255, 0)
 red = (255, 0, 0)
 blue = (0, 0, 255)
 gray = (128, 128, 128)
+
 
 # Define the Player class
 class Player(pygame.sprite.Sprite):
@@ -148,9 +157,6 @@ class Player(pygame.sprite.Sprite):
     def get_hp(self):
         return self.hp
 
-
-
-        # -----------------------------------------------------------
 
     def gain_xp(self, amount):
         self.xp += amount
@@ -287,39 +293,74 @@ pygame.time.set_timer(slime_spawn_event, 5000)
 # Create a group for obstacles (currently empty, but you can add obstacles here)
 obstacles = pygame.sprite.Group()
 
-#---------------------------------------------------------------
+#Pause menu function ------------------------------------------------
 
-# Main game loop
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+# Initialize paused flag
+paused = False  # Game starts in running state
 
-        # Spawn a new candy every 5 seconds
-        if event.type == candy_spawn_event:
-            print("Candy spawned!")  # Debug message
-            candy = Candy('Pictures/Candy.png')  # Use your candy image path
-            candies.add(candy)
-            all_sprites.add(candy)
+# Define the pause menu function
+def pause_menu():
+    """Pause menu with a transparent background, title, resume, and quit buttons."""
+    button_width = 150
+    button_height = 40
+    resume_button = pygame.Rect(width // 2 - button_width // 2, height // 2 - 50, button_width, button_height)
+    quit_button = pygame.Rect(width // 2 - button_width // 2, height // 2 + 10, button_width, button_height)
 
-        # Spawn a new slime every # seconds
-        if event.type == slime_spawn_event:
-            print("Slime spawned!") # Debug message
-            slime = Slime('Pictures/Slime.png') # Use your slime image path
-            slimes.add(slime)
-            all_sprites.add(slime)
+    # Create a semi-transparent surface for the frosted effect
+    transparent_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    transparent_surface.fill((0, 0, 0, 128))  # Black with 50% transparency
 
-    # Get the pressed keys
-    keys = pygame.key.get_pressed()
+    # Pause menu loop
+    while True:
+        # First, draw the game state underneath
+        draw_game()
 
-    # Update the player (pass in the keys, obstacles, candies, and slimes for collision detection)
-    player.update(keys, obstacles, candies, slimes, width, height)
+        # Draw the transparent overlay and pause menu on top of the current game state
+        screen.blit(transparent_surface, (0, 0))  # Draw the transparent overlay
 
-    # Move all slimes towards the player
-    for slime in slimes:
-        slime.move_towards_player(player)
+        font = pygame.font.Font(None, 36)
+        title_font = pygame.font.Font(None, 48)  # Larger font for the title
 
+        # Draw the title "Morp(1)"
+        title_text = title_font.render('Morp(1)', True, black)
+        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 100))
+        screen.blit(title_text, title_rect)
+
+        # Draw the buttons (Resume and Quit)
+        pygame.draw.rect(screen, green, resume_button)
+        pygame.draw.rect(screen, red, quit_button)
+
+        resume_text = font.render('Resume', True, black)
+        quit_text = font.render('Quit', True, black)
+
+        # Center the text within the buttons
+        resume_text_rect = resume_text.get_rect(center=resume_button.center)
+        quit_text_rect = quit_text.get_rect(center=quit_button.center)
+
+        screen.blit(resume_text, resume_text_rect)
+        screen.blit(quit_text, quit_text_rect)
+
+        # Only one call to update the display
+        pygame.display.flip()
+
+        # Handle pause menu events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if resume_button.collidepoint(event.pos):
+                    return False  # Resume the game
+                if quit_button.collidepoint(event.pos):
+                    pygame.quit()
+                    sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return False  # Resume the game if ESC is pressed
+
+
+# Function to draw the game state (player, slimes, candies, etc.)
+def draw_game():
     # Fill the screen with a background color (white in this case)
     screen.fill(white)
 
@@ -329,15 +370,67 @@ while running:
     # Draw the HP bar in the top-left corner of the screen
     draw_HP_bar(screen, player)
 
+    # Draw the pause button
+    screen.blit(pause_button, pause_button_rect)
+
     # Draw all sprites (this includes the player, candies, and slimes)
     all_sprites.draw(screen)
 
-    # Update the display
-    pygame.display.flip()
+#---------------------------------------------------------------
 
-    # Cap the frame rate to 60 FPS
-    pygame.time.Clock().tick(60)
+# Main game loop
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+        # Check if the ESC key is pressed to open the pause menu
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            paused = True  # Trigger pause state
+
+        # Check if the pause button is clicked
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if pause_button_rect.collidepoint(event.pos):
+                paused = True  # Trigger pause state
+
+        # Spawn a new candy every 5 seconds
+        if event.type == candy_spawn_event:
+            candy = Candy('Pictures/Candy.png')
+            candies.add(candy)
+            all_sprites.add(candy)
+
+        # Spawn a new slime every # seconds
+        if event.type == slime_spawn_event:
+            slime = Slime('Pictures/Slime.png')
+            slimes.add(slime)
+            all_sprites.add(slime)
+
+    # Pause menu logic
+    if paused:
+        paused = pause_menu()  # Show the pause menu and resume/quit options
+    else:
+        # Regular game update logic
+        keys = pygame.key.get_pressed()
+
+        # Update the player (pass in the keys, obstacles, candies, and slimes for collision detection)
+        player.update(keys, obstacles, candies, slimes, width, height)
+
+        # Move all slimes towards the player
+        for slime in slimes:
+            slime.move_towards_player(player)
+
+        # Draw the game state
+        draw_game()
+
+        # Update the display
+        pygame.display.flip()
+
+        # Cap the frame rate to 60 FPS
+        pygame.time.Clock().tick(60)
 
 # Quit the game when the loop ends
 pygame.quit()
 sys.exit()
+
+
