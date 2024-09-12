@@ -128,13 +128,12 @@ class Player(pygame.sprite.Sprite):
         # Rotate the gun to face the mouse cursor and position it around the player
         self.rotate_gun(mouse_pos)
 
-        # Damage for player ------------------------------------------
-
+        """
         # Check for collisions with slimes and take damage (with cooldown)
         slime_collisions = pygame.sprite.spritecollide(self, slimes, False)
         for slime in slime_collisions:
             self.take_damage(10)  # Try to take 10 damage on slime collision
-
+        """
         # Check for collisions with obstacles (if any)
         if pygame.sprite.spritecollide(self, obstacles, False):
             self.hp -= 1  # Reduce HP on collision
@@ -158,7 +157,6 @@ class Player(pygame.sprite.Sprite):
         if self.hp <= 0:
             print("Game Over!")
 
-        # -----------------------------------------------------------
     def get_hp(self):
         return self.hp
 
@@ -292,8 +290,6 @@ class Bullet(pygame.sprite.Sprite):
     def get_level(self):
         return self.level
 
-
-
 # Define the Candy class
 class Candy(pygame.sprite.Sprite):
     def __init__(self, image_path):
@@ -306,20 +302,20 @@ class Candy(pygame.sprite.Sprite):
         self.rect.x = random.randint(0, width - self.rect.width)
         self.rect.y = random.randint(0, height - self.rect.height)
 
-# Define the Slime class
-class Slime(pygame.sprite.Sprite):
-    def __init__(self, image_path):
+#Enemy Class
+# Define the Enemy base class
+class Enemy(pygame.sprite.Sprite):
+    def __init__(self, image_path, speed, hp, damage):
         super().__init__()
         self.image = pygame.image.load(image_path).convert_alpha()
         self.original_image = self.image.copy()  # Store the original image for resetting after blinking
         self.rect = self.image.get_rect()
-        self.spawn_within_screen()
 
-        # Slime attributes
-        self.hp = 10
-        self.last_hp = self.hp  # Keep track of the last HP to detect HP loss
-        self.speed = 2
-        self.direction = 'right'  # Initialize slime facing right
+        # Enemy attributes
+        self.hp = hp
+        self.speed = speed
+        self.damage = damage  # New damage attribute
+        self.direction = 'right'  # Initialize enemy facing right
 
         # Damage blinking attributes
         self.is_blinking = False
@@ -327,17 +323,17 @@ class Slime(pygame.sprite.Sprite):
         self.blink_start_time = 0
 
     def spawn_within_screen(self):
-        """Spawn slime at a random position within the screen."""
+        """Spawn enemy at a random position within the screen."""
         self.rect.x = random.randint(0, width - self.rect.width)
         self.rect.y = random.randint(0, height - self.rect.height)
 
     def move_towards_player(self, player):
-        """Moves the slime towards the player."""
+        """Moves the enemy towards the player."""
         direction_x = player.rect.x - self.rect.x
         direction_y = player.rect.y - self.rect.y
         distance = math.hypot(direction_x, direction_y)
 
-        # Flip the slime based on its direction relative to the player
+        # Flip the enemy based on its direction relative to the player
         if direction_x < 0 and self.direction != 'left':  # Moving left
             self.image = pygame.transform.flip(self.original_image, True, False)
             self.direction = 'left'
@@ -349,14 +345,14 @@ class Slime(pygame.sprite.Sprite):
             direction_x /= distance
             direction_y /= distance
 
-        # Move the slime towards the player
+        # Move the enemy towards the player
         self.rect.x += int(direction_x * self.speed)
         self.rect.y += int(direction_y * self.speed)
 
-    def take_damage(self, damage):
+    def enemy_take_damage(self, damage):
         """Handles damage and triggers blinking effect."""
         self.hp -= damage
-        print(f"Slime took {damage} damage. Current HP: {self.hp}")
+        print(f"{self.__class__.__name__} took {damage} damage. Current HP: {self.hp}")
 
         # Trigger the blinking effect
         self.is_blinking = True
@@ -368,10 +364,10 @@ class Slime(pygame.sprite.Sprite):
         self.image = red_tinted_image
 
         if self.hp <= 0:
-            self.kill()  # Remove the slime when HP reaches 0
+            self.kill()  # Remove the enemy when HP reaches 0
 
     def update(self):
-        """Update the slime, handle movement and the blinking state."""
+        """Update the enemy, handle blinking state."""
         # Handle blinking effect
         if self.is_blinking:
             current_time = pygame.time.get_ticks()
@@ -382,6 +378,30 @@ class Slime(pygame.sprite.Sprite):
                     self.image = pygame.transform.flip(self.original_image, True, False)  # Face left again
                 else:
                     self.image = self.original_image  # Face right
+
+
+
+# Define the Slime class (inherits from Enemy)
+class Slime(Enemy):
+    def __init__(self):
+        super().__init__('Pictures/Slime.png', speed=2, hp=10, damage=10)  # Set slime's damage to 10
+        self.spawn_within_screen()
+
+# Replace slimes group with a generic enemies group
+enemies = pygame.sprite.Group()
+
+# In the game loop, spawn slimes and other enemies:
+# Example for slime:
+"""
+slime = Slime()
+enemies.add(slime)
+all_sprites.add(slime)
+"""
+
+# Now update all enemies in the main game loop
+for enemy in enemies:
+    enemy.move_towards_player(player)  # Move each enemy toward the player
+    enemy.update()  # Handle blinking and other updates
 
 
 # Function to draw the XP bar and level text
@@ -578,30 +598,34 @@ def pause_menu():
 # Reset the game state ------------------------------------------------
 def reset_game():
     """Reset the game state to its initial configuration."""
-    global player, all_sprites, bullets, candies, slimes, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
+    global player, all_sprites, bullets, candies, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
 
-    # Recreate the player instance with the pistol gun
+    # Clear all sprite groups to ensure no lingering objects
+    all_sprites.empty()
+    bullets.empty()
+    candies.empty()
+    enemies.empty()
+    obstacles.empty()
+
+    # Recreate the player instance with the pistol gun and reset HP
     player = Player(640, 360, 'Pictures/Morp.png', pistol)
+    all_sprites.add(player)  # Add player to the all_sprites group
 
-    # Recreate sprite groups
-    all_sprites = pygame.sprite.Group()
-    all_sprites.add(player)
-
+    # Reset the sprite groups
     bullets = pygame.sprite.Group()
     candies = pygame.sprite.Group()
-    slimes = pygame.sprite.Group()
+    enemies = pygame.sprite.Group()  # Use a general enemies group instead of slimes
+    obstacles = pygame.sprite.Group()  # Recreate the group for obstacles (currently empty)
 
-    # Recreate the group for obstacles (currently empty, but you can add obstacles here)
-    obstacles = pygame.sprite.Group()
-
-    # Reset the timer
+    # Reset the game timer
     start_time = pygame.time.get_ticks()
     total_paused_time = 0
     pause_start_time = None
 
-    # Reset paused state to ensure the game doesn't start paused
+    # Reset paused and player dead states
     paused = False  # Reset paused state when the game is restarted
     player_dead = False  # Reset player dead status
+
 
 #Death Game Over function ------------------------------------------------
 
@@ -675,27 +699,7 @@ def Game_Jover(death_time):
                     reset_game()  # Reset the game state
                     return 'title_screen'  # Indicate to show the title screen
 
-"""
-# Function to draw the game state (player, slimes, candies, etc.)
-def draw_game():
-    # Fill the screen with a background color (white in this case)
-    screen.fill(white)
 
-    # Draw the XP bar in the top-left corner of the screen
-    draw_xp_bar(screen, player)
-
-    # Draw the HP bar in the top-left corner of the screen
-    draw_HP_bar(screen, player)
-
-    # Draw the pause button
-    screen.blit(pause_button, pause_button_rect)
-
-    # Draw all sprites (this includes the player, candies, and slimes)
-    all_sprites.draw(screen)
-
-    # Draw the bullets
-    bullets.draw(screen)
-"""
 def draw_GameUI():
     # Fill the screen with a background color (white in this case)
     screen.fill(white)
@@ -740,20 +744,19 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-        # Check if the ESC key is pressed to open the pause menu
+        # Check for pause menu
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            if not paused and not player_dead:  # Only allow pausing if the player is not dead
-                paused = True  # Trigger pause state
-                pause_start_time = pygame.time.get_ticks()  # Record the time when paused
+            if not paused and not player_dead:
+                paused = True
+                pause_start_time = pygame.time.get_ticks()
 
-        # Check if the pause button is clicked
+        # Handle pause button click
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if pause_button_rect.collidepoint(event.pos):
-                if not paused and not player_dead:  # Only allow pausing if the player is not dead
-                    paused = True  # Trigger pause state
-                    pause_start_time = pygame.time.get_ticks()  # Record the time when paused
+            if pause_button_rect.collidepoint(event.pos) and not player_dead:
+                paused = True
+                pause_start_time = pygame.time.get_ticks()
 
-        # Check for shooting (left mouse click)
+        # Shooting (left mouse click)
         if not player_dead and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             bullet = player.shoot()
             if bullet:
@@ -768,79 +771,81 @@ while running:
 
         # Spawn a new slime every # seconds
         if event.type == slime_spawn_event and not player_dead:
-            slime = Slime('Pictures/Slime.png')
-            slimes.add(slime)
-            all_sprites.add(slime)
+            slime = Slime()
+            enemies.add(slime)
+            all_sprites.add(slime)  # Add slime to both enemies and all_sprites
 
     # Pause menu logic
     if paused:
         result = pause_menu()
         if result == 'title_screen':
-            reset_game()  # Reset the game after returning to the title screen
-            title_screen()  # Go to the title screen
-        paused = False  # Make sure the game isn't paused when returning from the title screen
+            reset_game()
+            title_screen()
+        paused = False
 
-        # Only update total_paused_time if pause_start_time is not None
         if pause_start_time is not None:
-            total_paused_time += pygame.time.get_ticks() - pause_start_time  # Update total paused time
-            pause_start_time = None  # Reset pause_start_time after use
+            total_paused_time += pygame.time.get_ticks() - pause_start_time
+            pause_start_time = None
     else:
         # Calculate the elapsed time
         if not player_dead:
-            elapsed_time = (pygame.time.get_ticks() - start_time - total_paused_time) // 1000  # Convert milliseconds to seconds
+            elapsed_time = (pygame.time.get_ticks() - start_time - total_paused_time) // 1000
 
-        # Regular game update logic if player is not dead
+        # Regular game update logic
         if not player_dead:
             keys = pygame.key.get_pressed()
             mouse_pos = pygame.mouse.get_pos()
+            player.update(keys, obstacles, candies, enemies, width, height, mouse_pos)
 
-            # Update the player (pass in the keys, obstacles, candies, and slimes for collision detection)
-            player.update(keys, obstacles, candies, slimes, width, height, mouse_pos)
-
-            # Check if the player is dead (hp <= 0)
             if player.get_hp() <= 0 and not player_dead:
                 player_dead = True
-                death_time = elapsed_time  # Capture the time of death
-                result = Game_Jover(death_time)  # Show the game over screen when the player dies
+                death_time = elapsed_time
+                result = Game_Jover(death_time)
                 if result == 'title_screen':
-                    reset_game()  # Reset the game after returning to the title screen
-                    title_screen()  # Go to the title screen
-                    paused = False  # Make sure the game isn't paused after resetting
-                player_dead = False  # Reset player dead state after showing title screen
+                    reset_game()
+                    title_screen()
+                    paused = False
+                player_dead = False
 
-            # Update and move all slimes towards the player
-            for slime in slimes:
-                slime.move_towards_player(player)  # Move the slime towards the player
-                slime.update()  # Handle blinking effect if damaged
+            # Update and move all enemies
+            for enemy in enemies:
+                enemy.move_towards_player(player)
+                enemy.update()
+
+            # Check for collisions between player and enemies
+            enemy_collisions = pygame.sprite.spritecollide(player, enemies, False)
+            for enemy in enemy_collisions:
+                player.take_damage(enemy.damage)  # Apply enemy's damage to the player
 
             # Update bullets
             bullets.update()
 
-            # Check for bullet collisions with slimes
+            # Check for bullet collisions with enemies
             for bullet in bullets:
-                slime_hit_list = pygame.sprite.spritecollide(bullet, slimes, False)
-                for slime in slime_hit_list:
-                    slime.take_damage(bullet.damage)  # Reduce slime HP and trigger red blink
-                    bullet.kill()  # Remove the bullet after hitting a slime
+                enemy_hit_list = pygame.sprite.spritecollide(bullet, enemies, False)
+                for enemy in enemy_hit_list:
+                    enemy.enemy_take_damage(bullet.damage)
+                    bullet.kill()
 
         # Draw the game state
         draw_GameUI()
 
-        # Draw the timer with the elapsed time if player is alive, otherwise use the death time
+        # Draw timer
         if player_dead:
-            draw_timer(screen, death_time)  # Show time of death
+            draw_timer(screen, death_time)
         else:
             draw_timer(screen, elapsed_time)
 
-        # Update the display
+        # Update display
         pygame.display.flip()
 
-        # Cap the frame rate to 60 FPS
+        # Cap frame rate
         pygame.time.Clock().tick(60)
 
 # Quit the game when the loop ends
 pygame.quit()
 sys.exit()
+
 
 
 
