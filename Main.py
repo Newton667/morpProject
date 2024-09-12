@@ -157,8 +157,6 @@ class Player(pygame.sprite.Sprite):
 
         if self.hp <= 0:
             print("Game Over!")
-            pygame.quit()
-            sys.exit()
 
         # -----------------------------------------------------------
     def get_hp(self):
@@ -415,6 +413,16 @@ def draw_HP_bar(screen, player):
     text = font.render(f'HP: {player.hp}', True, black)
     screen.blit(text, (bar_x, bar_y + bar_height + 5))
 
+# Draw timer
+def draw_timer(screen, time):
+    font = pygame.font.Font(None, 25)
+    hours = time // 3600
+    minutes = (time % 3600) // 60
+    seconds = time % 60
+    text = font.render(f'Time: {hours:02}:{minutes:02}:{seconds:02}', True, black)
+    text_rect = text.get_rect(center=(width // 2, 15))  # Center the text at the top middle
+    screen.blit(text, text_rect)
+
 
 # Create guns
 pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, fire_rate=500, bullet_speed=10)
@@ -443,9 +451,6 @@ pygame.time.set_timer(slime_spawn_event, 5000)
 obstacles = pygame.sprite.Group()
 
 #Title screen function ------------------------------------------------
-import pygame
-import sys
-
 def title_screen():
     """Title screen with a transparent background, title, and start button."""
     button_width = 150
@@ -492,8 +497,8 @@ def title_screen():
                 sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if start_button.collidepoint(event.pos):
+                    reset_game()  # Reset the game state and timer when the player starts
                     return  # Exit the title screen loop and start the game
-
     # Start the title screen loop
 
 #Pause menu function ------------------------------------------------
@@ -570,10 +575,10 @@ def pause_menu():
                 if event.key == pygame.K_ESCAPE:
                     return False  # Resume the game if ESC is pressed
 
-    # reset the game state
+# Reset the game state ------------------------------------------------
 def reset_game():
     """Reset the game state to its initial configuration."""
-    global player, all_sprites, bullets, candies, slimes, obstacles
+    global player, all_sprites, bullets, candies, slimes, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
 
     # Recreate the player instance with the pistol gun
     player = Player(640, 360, 'Pictures/Morp.png', pistol)
@@ -589,6 +594,86 @@ def reset_game():
     # Recreate the group for obstacles (currently empty, but you can add obstacles here)
     obstacles = pygame.sprite.Group()
 
+    # Reset the timer
+    start_time = pygame.time.get_ticks()
+    total_paused_time = 0
+    pause_start_time = None
+
+    # Reset paused state to ensure the game doesn't start paused
+    paused = False  # Reset paused state when the game is restarted
+    player_dead = False  # Reset player dead status
+
+#Death Game Over function ------------------------------------------------
+
+# Define the Game Over screen function
+def Game_Jover(death_time):
+    """Death menu with a transparent background, title and quit buttons."""
+    button_width = 150
+    button_height = 40
+    titlescreen_button = pygame.Rect(width // 2 - button_width // 2, height // 2 - 10, button_width, button_height)
+    quit_button = pygame.Rect(width // 2 - button_width // 2, height // 2 + 50, button_width, button_height)
+
+    # Create a semi-transparent surface for the frosted effect
+    transparent_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    transparent_surface.fill((0, 0, 0, 128))  # Black with 50% transparency
+
+    # Game over loop
+    while True:
+        # First, draw the game state underneath
+        draw_GameUI()
+
+        # Draw the transparent overlay and death menu on top of the current game state
+        screen.blit(transparent_surface, (0, 0))  # Draw the transparent overlay
+
+        font = pygame.font.Font(None, 36)
+        title_font = pygame.font.Font(None, 48)  # Larger font for the title
+
+        # Draw the title "Game Over"
+        title_text = title_font.render('Game Over', True, black)
+        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 150))
+        screen.blit(title_text, title_rect)
+
+        # Display the time survived (using the death_time argument)
+        minutes = death_time // 60
+        seconds = death_time % 60
+        time_survived_text = font.render(f'Time Survived: {minutes:02}:{seconds:02}', True, black)
+        time_survived_rect = time_survived_text.get_rect(center=(width // 2, height // 2 - 100))
+        screen.blit(time_survived_text, time_survived_rect)
+
+        # Draw the buttons (Title Screen, and Quit)
+        pygame.draw.rect(screen, sky_blue, titlescreen_button)
+        pygame.draw.rect(screen, red, quit_button)
+
+        titlescreen_text = font.render('Title Screen', True, black)
+        quit_text = font.render('Quit', True, black)
+
+        # Center the text within the buttons
+        titlescreen_text_rect = titlescreen_text.get_rect(center=titlescreen_button.center)
+        quit_text_rect = quit_text.get_rect(center=quit_button.center)
+
+        # Blit the text on the buttons
+        screen.blit(titlescreen_text, titlescreen_text_rect)
+        screen.blit(quit_text, quit_text_rect)
+
+        # Only one call to update the display
+        pygame.display.flip()
+
+        # Handle pause menu events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if titlescreen_button.collidepoint(event.pos):
+                    reset_game()  # Reset the game state
+                    return 'title_screen'  # Indicate to show the title screen
+                if quit_button.collidepoint(event.pos):
+                    pygame.quit()
+                    sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    reset_game()  # Reset the game state
+                    return 'title_screen'  # Indicate to show the title screen
 
 """
 # Function to draw the game state (player, slimes, candies, etc.)
@@ -639,8 +724,17 @@ def draw_GameUI():
 # Show the title screen before starting the main game loop
 title_screen()
 
+# Initialize the start time and total paused time
+start_time = pygame.time.get_ticks()
+total_paused_time = 0
+pause_start_time = None
+
 # Main game loop
 running = True
+player_dead = False  # Track if the player is dead
+paused = False  # Ensure paused starts as False
+death_time = 0  # Track the time of death
+
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -648,28 +742,32 @@ while running:
 
         # Check if the ESC key is pressed to open the pause menu
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            paused = True  # Trigger pause state
+            if not paused and not player_dead:  # Only allow pausing if the player is not dead
+                paused = True  # Trigger pause state
+                pause_start_time = pygame.time.get_ticks()  # Record the time when paused
 
         # Check if the pause button is clicked
         if event.type == pygame.MOUSEBUTTONDOWN:
             if pause_button_rect.collidepoint(event.pos):
-                paused = True  # Trigger pause state
+                if not paused and not player_dead:  # Only allow pausing if the player is not dead
+                    paused = True  # Trigger pause state
+                    pause_start_time = pygame.time.get_ticks()  # Record the time when paused
 
         # Check for shooting (left mouse click)
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        if not player_dead and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             bullet = player.shoot()
             if bullet:
                 bullets.add(bullet)
                 all_sprites.add(bullet)
 
         # Spawn a new candy every 5 seconds
-        if event.type == candy_spawn_event:
+        if event.type == candy_spawn_event and not player_dead:
             candy = Candy('Pictures/Candy.png')
             candies.add(candy)
             all_sprites.add(candy)
 
         # Spawn a new slime every # seconds
-        if event.type == slime_spawn_event:
+        if event.type == slime_spawn_event and not player_dead:
             slime = Slime('Pictures/Slime.png')
             slimes.add(slime)
             all_sprites.add(slime)
@@ -678,33 +776,61 @@ while running:
     if paused:
         result = pause_menu()
         if result == 'title_screen':
-            title_screen()
-        paused = False
+            reset_game()  # Reset the game after returning to the title screen
+            title_screen()  # Go to the title screen
+        paused = False  # Make sure the game isn't paused when returning from the title screen
+
+        # Only update total_paused_time if pause_start_time is not None
+        if pause_start_time is not None:
+            total_paused_time += pygame.time.get_ticks() - pause_start_time  # Update total paused time
+            pause_start_time = None  # Reset pause_start_time after use
     else:
-        # Regular game update logic
-        keys = pygame.key.get_pressed()
-        mouse_pos = pygame.mouse.get_pos()
+        # Calculate the elapsed time
+        if not player_dead:
+            elapsed_time = (pygame.time.get_ticks() - start_time - total_paused_time) // 1000  # Convert milliseconds to seconds
 
-        # Update the player (pass in the keys, obstacles, candies, and slimes for collision detection)
-        player.update(keys, obstacles, candies, slimes, width, height, mouse_pos)
+        # Regular game update logic if player is not dead
+        if not player_dead:
+            keys = pygame.key.get_pressed()
+            mouse_pos = pygame.mouse.get_pos()
 
-        # Update and move all slimes towards the player
-        for slime in slimes:
-            slime.move_towards_player(player)  # Move the slime towards the player
-            slime.update()  # Handle blinking effect if damaged
+            # Update the player (pass in the keys, obstacles, candies, and slimes for collision detection)
+            player.update(keys, obstacles, candies, slimes, width, height, mouse_pos)
 
-        # Update bullets
-        bullets.update()
+            # Check if the player is dead (hp <= 0)
+            if player.get_hp() <= 0 and not player_dead:
+                player_dead = True
+                death_time = elapsed_time  # Capture the time of death
+                result = Game_Jover(death_time)  # Show the game over screen when the player dies
+                if result == 'title_screen':
+                    reset_game()  # Reset the game after returning to the title screen
+                    title_screen()  # Go to the title screen
+                    paused = False  # Make sure the game isn't paused after resetting
+                player_dead = False  # Reset player dead state after showing title screen
 
-        # Check for bullet collisions with slimes
-        for bullet in bullets:
-            slime_hit_list = pygame.sprite.spritecollide(bullet, slimes, False)
-            for slime in slime_hit_list:
-                slime.take_damage(bullet.damage)  # Reduce slime HP and trigger red blink
-                bullet.kill()  # Remove the bullet after hitting a slime
+            # Update and move all slimes towards the player
+            for slime in slimes:
+                slime.move_towards_player(player)  # Move the slime towards the player
+                slime.update()  # Handle blinking effect if damaged
+
+            # Update bullets
+            bullets.update()
+
+            # Check for bullet collisions with slimes
+            for bullet in bullets:
+                slime_hit_list = pygame.sprite.spritecollide(bullet, slimes, False)
+                for slime in slime_hit_list:
+                    slime.take_damage(bullet.damage)  # Reduce slime HP and trigger red blink
+                    bullet.kill()  # Remove the bullet after hitting a slime
 
         # Draw the game state
         draw_GameUI()
+
+        # Draw the timer with the elapsed time if player is alive, otherwise use the death time
+        if player_dead:
+            draw_timer(screen, death_time)  # Show time of death
+        else:
+            draw_timer(screen, elapsed_time)
 
         # Update the display
         pygame.display.flip()
@@ -715,6 +841,11 @@ while running:
 # Quit the game when the loop ends
 pygame.quit()
 sys.exit()
+
+
+
+
+
 
 
 
