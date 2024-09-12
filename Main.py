@@ -1,3 +1,5 @@
+from cgitb import reset
+
 import pygame
 import sys
 import random
@@ -26,6 +28,7 @@ green = (0, 255, 0)
 red = (255, 0, 0)
 blue = (0, 0, 255)
 gray = (128, 128, 128)
+sky_blue = (135, 206, 235)
 
 # Define the Gun class to support multiple types of guns
 class Gun:
@@ -80,7 +83,12 @@ class Player(pygame.sprite.Sprite):
 
         # Gun rotation variables
         self.gun_distance_from_player = 40  # Distance of the gun from the player's center
-        self.gun_angle = 0  # Current angle of the gu
+        self.gun_angle = 0  # Current angle of the gun
+
+        # Initialize rotated gun and its rect (to avoid AttributeError)
+        self.rotated_gun = self.gun_image  # Start with the gun's default image
+        self.gun_rect = self.rotated_gun.get_rect(center=self.rect.center)  # Position gun initially
+
 
     def update(self, keys, obstacles, candies, slimes, screen_width, screen_height, mouse_pos):
         # Movement logic with WASD keys
@@ -200,10 +208,10 @@ class Player(pygame.sprite.Sprite):
         rotated_gun_image = pygame.transform.rotate(self.gun.image, angle)
 
         # Check if the gun should be flipped horizontally based on the angle
-        if 90 < angle < 270 or -270 < angle < -90:
-            # If the gun is on the left side of the player, flip it horizontally
+        if 90 < angle < 270:
+            # Flip the gun horizontally if it's on the left side of the player
             rotated_gun_image = pygame.transform.flip(rotated_gun_image, True, True)
-
+            rotated_gun_image = pygame.transform.rotate(rotated_gun_image, 180)  # Rotate 180 degrees for flip
 
         # Update the gun's rect to its new position
         self.rotated_gun = rotated_gun_image
@@ -278,8 +286,13 @@ class Bullet(pygame.sprite.Sprite):
         if self.rect.bottom > screen_height:
             self.rect.bottom = screen_height
 
+    # Function to draw the XP bar and level text
     def get_hp(self):
         return self.hp
+
+    # Function to draw the XP bar and level text
+    def get_level(self):
+        return self.level
 
 
 
@@ -425,8 +438,63 @@ pygame.time.set_timer(candy_spawn_event, 5000)
 slime_spawn_event = pygame.USEREVENT + 2
 pygame.time.set_timer(slime_spawn_event, 5000)
 
+
 # Create a group for obstacles (currently empty, but you can add obstacles here)
 obstacles = pygame.sprite.Group()
+
+#Title screen function ------------------------------------------------
+import pygame
+import sys
+
+def title_screen():
+    """Title screen with a transparent background, title, and start button."""
+    button_width = 150
+    button_height = 40
+    start_button = pygame.Rect(width // 2 - button_width // 2, height // 2 - 50, button_width, button_height)
+
+    # Load the title image
+    title_image = pygame.image.load('Pictures/title.png').convert_alpha()
+    title_image_rect = title_image.get_rect(center=(width // 2, height // 2 - 200))
+
+    # Create a semi-transparent surface for the frosted effect
+    transparent_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    transparent_surface.fill((0, 0, 0, 128))  # Black with 50% transparency
+
+    # Title screen loop
+    while True:
+        # Fill the screen with white color
+        screen.fill(white)
+
+        # Draw the transparent overlay and title screen on top of the current game state
+        screen.blit(transparent_surface, (0, 0))  # Draw the transparent overlay
+
+        # Blit the title image
+        screen.blit(title_image, title_image_rect)
+
+        font = pygame.font.Font(None, 48)
+        title_text = font.render('Morp(1)', True, black)
+        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 100))
+        screen.blit(title_text, title_rect)
+
+        # Draw the start button
+        pygame.draw.rect(screen, green, start_button)
+        start_text = font.render('Start', True, black)
+        start_text_rect = start_text.get_rect(center=start_button.center)
+        screen.blit(start_text, start_text_rect)
+
+        # Only one call to update the display
+        pygame.display.flip()
+
+        # Handle title screen events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if start_button.collidepoint(event.pos):
+                    return  # Exit the title screen loop and start the game
+
+    # Start the title screen loop
 
 #Pause menu function ------------------------------------------------
 
@@ -438,8 +506,9 @@ def pause_menu():
     """Pause menu with a transparent background, title, resume, and quit buttons."""
     button_width = 150
     button_height = 40
-    resume_button = pygame.Rect(width // 2 - button_width // 2, height // 2 - 50, button_width, button_height)
-    quit_button = pygame.Rect(width // 2 - button_width // 2, height // 2 + 10, button_width, button_height)
+    resume_button = pygame.Rect(width // 2 - button_width // 2, height // 2 - 70, button_width, button_height)
+    titlescreen_button = pygame.Rect(width // 2 - button_width // 2, height // 2 - 10, button_width, button_height)
+    quit_button = pygame.Rect(width // 2 - button_width // 2, height // 2 + 50, button_width, button_height)
 
     # Create a semi-transparent surface for the frosted effect
     transparent_surface = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -448,7 +517,7 @@ def pause_menu():
     # Pause menu loop
     while True:
         # First, draw the game state underneath
-        draw_game()
+        draw_GameUI()
 
         # Draw the transparent overlay and pause menu on top of the current game state
         screen.blit(transparent_surface, (0, 0))  # Draw the transparent overlay
@@ -458,21 +527,26 @@ def pause_menu():
 
         # Draw the title "Morp(1)"
         title_text = title_font.render('Morp(1)', True, black)
-        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 100))
+        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 150))
         screen.blit(title_text, title_rect)
 
-        # Draw the buttons (Resume and Quit)
+        # Draw the buttons (Resume, Title Screen, and Quit)
         pygame.draw.rect(screen, green, resume_button)
+        pygame.draw.rect(screen, sky_blue, titlescreen_button)
         pygame.draw.rect(screen, red, quit_button)
 
         resume_text = font.render('Resume', True, black)
+        titlescreen_text = font.render('Title Screen', True, black)
         quit_text = font.render('Quit', True, black)
 
         # Center the text within the buttons
         resume_text_rect = resume_text.get_rect(center=resume_button.center)
+        titlescreen_text_rect = titlescreen_text.get_rect(center=titlescreen_button.center)
         quit_text_rect = quit_text.get_rect(center=quit_button.center)
 
+        # Blit the text on the buttons
         screen.blit(resume_text, resume_text_rect)
+        screen.blit(titlescreen_text, titlescreen_text_rect)
         screen.blit(quit_text, quit_text_rect)
 
         # Only one call to update the display
@@ -486,6 +560,9 @@ def pause_menu():
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if resume_button.collidepoint(event.pos):
                     return False  # Resume the game
+                if titlescreen_button.collidepoint(event.pos):
+                    reset_game()  # Reset the game state
+                    return 'title_screen'  # Indicate to show the title screen
                 if quit_button.collidepoint(event.pos):
                     pygame.quit()
                     sys.exit()
@@ -493,7 +570,27 @@ def pause_menu():
                 if event.key == pygame.K_ESCAPE:
                     return False  # Resume the game if ESC is pressed
 
+    # reset the game state
+def reset_game():
+    """Reset the game state to its initial configuration."""
+    global player, all_sprites, bullets, candies, slimes, obstacles
 
+    # Recreate the player instance with the pistol gun
+    player = Player(640, 360, 'Pictures/Morp.png', pistol)
+
+    # Recreate sprite groups
+    all_sprites = pygame.sprite.Group()
+    all_sprites.add(player)
+
+    bullets = pygame.sprite.Group()
+    candies = pygame.sprite.Group()
+    slimes = pygame.sprite.Group()
+
+    # Recreate the group for obstacles (currently empty, but you can add obstacles here)
+    obstacles = pygame.sprite.Group()
+
+
+"""
 # Function to draw the game state (player, slimes, candies, etc.)
 def draw_game():
     # Fill the screen with a background color (white in this case)
@@ -513,8 +610,8 @@ def draw_game():
 
     # Draw the bullets
     bullets.draw(screen)
-
-def draw_game():
+"""
+def draw_GameUI():
     # Fill the screen with a background color (white in this case)
     screen.fill(white)
 
@@ -538,6 +635,9 @@ def draw_game():
 
 
 #---------------------------------------------------------------
+
+# Show the title screen before starting the main game loop
+title_screen()
 
 # Main game loop
 running = True
@@ -576,7 +676,10 @@ while running:
 
     # Pause menu logic
     if paused:
-        paused = pause_menu()  # Show the pause menu and resume/quit options
+        result = pause_menu()
+        if result == 'title_screen':
+            title_screen()
+        paused = False
     else:
         # Regular game update logic
         keys = pygame.key.get_pressed()
@@ -601,7 +704,7 @@ while running:
                 bullet.kill()  # Remove the bullet after hitting a slime
 
         # Draw the game state
-        draw_game()
+        draw_GameUI()
 
         # Update the display
         pygame.display.flip()
