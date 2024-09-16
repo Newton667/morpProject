@@ -57,12 +57,13 @@ class Player(pygame.sprite.Sprite):
         # Player attributes
         self.speed = 3
         self.hp = 100
+        self.max_hp = 100
         self.direction = 'right'
 
         # XP and Leveling attributes
         self.level = 1
         self.xp = 0
-        self.xp_needed = 100  # Initial XP required to level up
+        self.xp_needed = 50  # Initial XP required to level up
 
         # Cooldown for taking damage (in milliseconds)
         self.damage_cooldown = 500  # 0.5 second cooldown
@@ -171,8 +172,9 @@ class Player(pygame.sprite.Sprite):
         if self.xp >= self.xp_needed:
             self.level += 1
             self.xp -= self.xp_needed  # Carry over remaining XP
-            self.xp_needed = int(self.xp_needed * 1.2)
+            self.xp_needed = int(self.xp_needed * 1.5)
             print(f"Level Up! Player is now level {self.level}.")
+            Upgrade_Page(self)  # Call the upgrade page
 
     def check_window_collision(self, screen_width, screen_height):
         if self.rect.left < 0:
@@ -264,13 +266,13 @@ class Bullet(pygame.sprite.Sprite):
     def get_xp_progress(self):
         return self.xp / self.xp_needed
 
-
     def check_level_up(self):
         if self.xp >= self.xp_needed:
             self.level += 1
             self.xp -= self.xp_needed  # Carry over remaining XP
-            self.xp_needed = int(self.xp_needed * 1.5)
+            self.xp_needed = int(self.xp_needed * 1.2)
             print(f"Level Up! Player is now level {self.level}.")
+            Upgrade_Page(self)  # Call the upgrade page
 
     def check_window_collision(self, screen_width, screen_height):
         if self.rect.left < 0:
@@ -422,15 +424,15 @@ def draw_xp_bar(screen, player):
 
 # Function to draw the HP bar and HP text
 def draw_HP_bar(screen, player):
-    bar_width = 150
+    bar_width = 12.3
     bar_height = 15
     bar_x = 15
     bar_y = 70
-    fill_width = int(bar_width * (player.get_hp() / 100))
+    fill_width = int(bar_width * (player.get_hp() / player.max_hp * bar_width))  # Adjust fill width based on max_hp
     pygame.draw.rect(screen, gray, (bar_x, bar_y, bar_width, bar_height))
     pygame.draw.rect(screen, red, (bar_x, bar_y, fill_width, bar_height))
     font = pygame.font.Font(None, 25)
-    text = font.render(f'HP: {player.hp}', True, black)
+    text = font.render(f'HP: {player.hp}/{player.max_hp}', True, black)
     screen.blit(text, (bar_x, bar_y + bar_height + 5))
 
 # Draw timer
@@ -595,6 +597,112 @@ def pause_menu():
                 if event.key == pygame.K_ESCAPE:
                     return False  # Resume the game if ESC is pressed
 
+# Upgrade Page function ------------------------------------------------
+
+class Upgrade:
+    def __init__(self, name, description, effect, logo_image_path):
+        self.name = name
+        self.description = description
+        self.effect = effect  # A function to apply the upgrade
+        self.logo_image = pygame.image.load(logo_image_path).convert_alpha()  # Load the logo image
+
+    def apply(self, player):
+        self.effect(player)
+
+def increase_speed(player):
+    player.speed += 2
+
+def increase_damage(player):
+    player.gun.damage += 5
+
+def increase_health(player):
+    player.max_hp += 20  # Increase max HP
+    player.hp = min(player.hp + 20, player.max_hp)  # Heal the player, but do not exceed max HP
+
+
+upgrades_pool = [
+    Upgrade("Speed Boost", "Increases player's speed by 2.", increase_speed, 'Pictures/Boot.png'),
+    Upgrade("Damage Boost", "Increases gun damage by 5.", increase_damage, 'Pictures/DamagePlus.png'),
+    Upgrade("Health Boost", "Increases max health by 20 and heals 20 HP.", increase_health, 'Pictures/HealCross.png'),
+    # Add more upgrades with their logos...
+]
+
+# Function to select random upgrades from the pool
+import random
+def select_random_upgrades(upgrades_pool, count=3):
+    return random.sample(upgrades_pool, min(count, len(upgrades_pool)))
+
+
+def Upgrade_Page(player):
+    """Upgrade page that appears on leveling up."""
+    button_width = 200
+    button_height = 40
+    selected_upgrades = select_random_upgrades(upgrades_pool, 3)
+    logo_size = (64, 64)  # Size of the logos
+
+    # Create a semi-transparent surface for the frosted effect
+    transparent_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    transparent_surface.fill((0, 0, 0, 128))  # Black with 50% transparency
+
+    # Create buttons for each upgrade
+    upgrade_buttons = []
+    for i, upgrade in enumerate(selected_upgrades):
+        button_rect = pygame.Rect(
+            width // 2 - button_width // 2,
+            height // 2 - 100 + i * (logo_size[1] + button_height + 30),
+            button_width,
+            button_height
+        )
+        upgrade_buttons.append((button_rect, upgrade))
+
+    while True:
+        # First, draw the game state underneath
+        draw_GameUI()
+
+        # Draw the transparent overlay and upgrade menu on top of the current game state
+        screen.blit(transparent_surface, (0, 0))  # Draw the transparent overlay
+
+        font = pygame.font.Font(None, 36)
+        title_font = pygame.font.Font(None, 48)  # Larger font for the title
+
+        # Draw the title "Choose Your Upgrade"
+        title_text = title_font.render('Choose Your Upgrade', True, white)
+        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 220))
+        screen.blit(title_text, title_rect)
+
+        # Draw the logos, descriptions, and buttons for each upgrade
+        for button_rect, upgrade in upgrade_buttons:
+            # Draw the logo
+            logo_pos = (button_rect.x, button_rect.y - logo_size[1] - 10)  # Position logo above the button
+            logo = pygame.transform.scale(upgrade.logo_image, logo_size)  # Resize the logo if needed
+            screen.blit(logo, logo_pos)
+
+            # Draw the description text
+            desc_text = font.render(upgrade.description, True, black)
+            desc_text_rect = desc_text.get_rect(center=(button_rect.centerx, button_rect.centery - 30))
+            screen.blit(desc_text, desc_text_rect)
+
+            # Draw the button
+            pygame.draw.rect(screen, green, button_rect)
+            button_text = font.render(upgrade.name, True, black)
+            screen.blit(button_text, (button_rect.x + 10, button_rect.y + 5))
+
+        # Only one call to update the display
+        pygame.display.flip()
+
+        # Handle upgrade selection events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for button_rect, upgrade in upgrade_buttons:
+                    if button_rect.collidepoint(event.pos):
+                        upgrade.apply(player)
+                        return  # Exit the upgrade page after selecting an upgrade
+
+
+
 # Reset the game state ------------------------------------------------
 def reset_game():
     """Reset the game state to its initial configuration."""
@@ -700,6 +808,7 @@ def Game_Jover(death_time):
                     return 'title_screen'  # Indicate to show the title screen
 
 
+# Draw the game state ------------------------------------------------
 def draw_GameUI():
     # Fill the screen with a background color (white in this case)
     screen.fill(white)
@@ -723,7 +832,8 @@ def draw_GameUI():
     bullets.draw(screen)
 
 
-#---------------------------------------------------------------
+# ---------------------------------------------------------------
+# Main game loop
 
 # Show the title screen before starting the main game loop
 title_screen()
