@@ -176,6 +176,19 @@ class Player(pygame.sprite.Sprite):
             print(f"Level Up! Player is now level {self.level}.")
             Upgrade_Page(self)  # Call the upgrade page
 
+            # Spawn new enemies based on the player's level
+            self.spawn_enemies_based_on_level()
+
+    def spawn_enemies_based_on_level(self):
+        global enemies, all_sprites
+        # Go through the enemy pool and add the appropriate enemies for the current level
+        for level, EnemyClass in enemy_pool:
+            if level <= self.level:
+                # Create a new enemy of the specified class and add it to the groups
+                new_enemy = EnemyClass()
+                enemies.add(new_enemy)
+                all_sprites.add(new_enemy)
+
     def check_window_collision(self, screen_width, screen_height):
         if self.rect.left < 0:
             self.rect.left = 0
@@ -389,6 +402,41 @@ class Slime(Enemy):
         super().__init__('Pictures/Slime.png', speed=2, hp=10, damage=10)  # Set slime's damage to 10
         self.spawn_within_screen()
 
+# Enemy pool where each entry is a tuple of (level, EnemyClass)
+enemy_pool = [
+    (1, Slime),  # Slime starts appearing at level 1
+    (2, Slime),  # Add more enemy types for higher levels
+    # Add more enemy types for higher levels
+]
+
+def get_available_enemies(level):
+    """Return a list of enemy classes available for the given level."""
+    return [EnemyClass for lvl, EnemyClass in enemy_pool if lvl <= level]
+
+def spawn_random_enemies(player):
+    """Spawn enemies based on the player's level and the enemy pool."""
+    global enemies, all_sprites
+    # Dictionary to keep track of how many of each enemy type to spawn
+    enemies_to_spawn = {}
+
+    # Determine which enemies to spawn based on the player's current level
+    for level, EnemyClass in enemy_pool:
+        if player.level >= level:
+            # Count how many times an enemy class appears
+            if EnemyClass in enemies_to_spawn:
+                enemies_to_spawn[EnemyClass] += 1
+            else:
+                enemies_to_spawn[EnemyClass] = 1
+
+    # Spawn the enemies according to the count in enemies_to_spawn
+    for EnemyClass, count in enemies_to_spawn.items():
+        for _ in range(count):
+            # Create a new enemy instance and add it to the groups
+            new_enemy = EnemyClass()
+            enemies.add(new_enemy)
+            all_sprites.add(new_enemy)
+
+
 # Replace slimes group with a generic enemies group
 enemies = pygame.sprite.Group()
 
@@ -464,7 +512,7 @@ slimes = pygame.sprite.Group()
 candy_spawn_event = pygame.USEREVENT + 1
 pygame.time.set_timer(candy_spawn_event, 5000)
 
-# Timer to spawn slimes every # seconds
+# Timer to spawn slimes/enemies every # seconds
 slime_spawn_event = pygame.USEREVENT + 2
 pygame.time.set_timer(slime_spawn_event, 5000)
 
@@ -609,6 +657,7 @@ class Upgrade:
     def apply(self, player):
         self.effect(player)
 
+# Upgrade effects
 def increase_speed(player):
     player.speed += 1
 
@@ -880,10 +929,14 @@ while running:
             all_sprites.add(candy)
 
         # Spawn a new slime every # seconds
+        #if event.type == slime_spawn_event and not player_dead:
+        #    slime = Slime()
+        #    enemies.add(slime)
+        #    all_sprites.add(slime)  # Add slime to both enemies and all_sprites
+
+        # Spawn enemies according to the pool every 5 seconds
         if event.type == slime_spawn_event and not player_dead:
-            slime = Slime()
-            enemies.add(slime)
-            all_sprites.add(slime)  # Add slime to both enemies and all_sprites
+            spawn_random_enemies(player)
 
     # Pause menu logic
     if paused:
