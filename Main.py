@@ -610,7 +610,7 @@ class Upgrade:
         self.effect(player)
 
 def increase_speed(player):
-    player.speed += 2
+    player.speed += 1
 
 def increase_damage(player):
     player.gun.damage += 5
@@ -621,7 +621,7 @@ def increase_health(player):
 
 
 upgrades_pool = [
-    Upgrade("Speed Boost", "Increases player's speed by 2.", increase_speed, 'Pictures/Boot.png'),
+    Upgrade("Speed Boost", "Increases player's speed by 1.", increase_speed, 'Pictures/Boot.png'),
     Upgrade("Damage Boost", "Increases gun damage by 5.", increase_damage, 'Pictures/DamagePlus.png'),
     Upgrade("Health Boost", "Increases max health by 20 and heals 20 HP.", increase_health, 'Pictures/HealCross.png'),
     # Add more upgrades with their logos...
