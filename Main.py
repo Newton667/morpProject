@@ -91,7 +91,7 @@ class Player(pygame.sprite.Sprite):
         self.gun_rect = self.rotated_gun.get_rect(center=self.rect.center)  # Position gun initially
 
 
-    def update(self, keys, obstacles, candies, slimes, screen_width, screen_height, mouse_pos):
+    def update(self, keys, obstacles, Pickup, Bunger, slimes, screen_width, screen_height, mouse_pos):
         # Movement logic with WASD keys
         if keys[pygame.K_w]:
             self.rect.y -= self.speed
@@ -118,13 +118,15 @@ class Player(pygame.sprite.Sprite):
         # Collision detection with window boundaries
         self.check_window_collision(screen_width, screen_height)
 
-        # Check for candy collision and collect XP
-        candy_collisions = pygame.sprite.spritecollide(self, candies, True)
-        for candy in candy_collisions:
-            self.gain_xp(10)
-
-            # Check if the player can level up
-            self.check_level_up()
+        # Check for pickup collisions and collect XP or HP
+        pickup_collisions = pygame.sprite.spritecollide(self, Pickup, True)
+        for pickup in pickup_collisions:
+            if isinstance(pickup, Candy):
+                self.gain_xp(10)
+                # Check if the player can level up
+                self.check_level_up()
+            elif isinstance(pickup, Bunger):
+                self.gain_HP(100)  # Gain 100 HP on Bunger collection
 
         # Rotate the gun to face the mouse cursor and position it around the player
         self.rotate_gun(mouse_pos)
@@ -158,9 +160,16 @@ class Player(pygame.sprite.Sprite):
         if self.hp <= 0:
             print("Game Over!")
 
+    # Function to heal the player
+    def gain_HP(self, amount):
+        self.hp = min(self.hp + amount, self.max_hp)  # Increase HP but do not exceed max HP
+        print(f"Player gained {amount} HP. Current HP: {self.hp}/{self.max_hp}")
+
+    # Function to draw the XP bar and level text
     def get_hp(self):
         return self.hp
 
+    # Function to draw the XP bar and level text
     def gain_xp(self, amount):
         self.xp += amount
         print(f"Player gained {amount} XP. Current XP: {self.xp}/{self.xp_needed}")
@@ -182,12 +191,13 @@ class Player(pygame.sprite.Sprite):
     def spawn_enemies_based_on_level(self):
         global enemies, all_sprites
         # Go through the enemy pool and add the appropriate enemies for the current level
-        for level, EnemyClass in enemy_pool, enemyBoss_pool:
-            if level <= self.level:
-                # Create a new enemy of the specified class and add it to the groups
-                new_enemy = EnemyClass()
-                enemies.add(new_enemy)
-                all_sprites.add(new_enemy)
+        for pool in (enemy_pool, enemyBoss_pool):  # Iterate over both enemy pools
+            for level, EnemyClass in pool:
+                if level <= self.level:
+                    # Create a new enemy of the specified class and add it to the groups
+                    new_enemy = EnemyClass()
+                    enemies.add(new_enemy)
+                    all_sprites.add(new_enemy)
 
     def check_window_collision(self, screen_width, screen_height):
         if self.rect.left < 0:
@@ -307,6 +317,18 @@ class Projectile(pygame.sprite.Sprite):
 
 # Define the Candy class
 class Candy(pygame.sprite.Sprite):
+    def __init__(self, image_path):
+        super().__init__()
+        self.image = pygame.image.load(image_path).convert_alpha()
+        self.rect = self.image.get_rect()
+        self.spawn_random()
+
+    def spawn_random(self):
+        self.rect.x = random.randint(0, width - self.rect.width)
+        self.rect.y = random.randint(0, height - self.rect.height)
+
+# Define the Bunger class
+class Bunger(pygame.sprite.Sprite):
     def __init__(self, image_path):
         super().__init__()
         self.image = pygame.image.load(image_path).convert_alpha()
@@ -548,7 +570,7 @@ all_sprites = pygame.sprite.Group()
 all_sprites.add(player)
 
 bullets = pygame.sprite.Group()
-candies = pygame.sprite.Group()
+Pickup = pygame.sprite.Group()
 slimes = pygame.sprite.Group()
 
 # Timer to spawn candy every 15 seconds
@@ -562,6 +584,10 @@ pygame.time.set_timer(Enemy_Spawn_Timer, 5000)
 # Slower enemy spawn timer
 Enemy_Spawn_Timer_Slow = pygame.USEREVENT + 3
 pygame.time.set_timer(Enemy_Spawn_Timer_Slow, 10000)
+
+# Timer to spawn Bunger every 15 seconds
+bunger_spawn_event = pygame.USEREVENT + 4
+pygame.time.set_timer(bunger_spawn_event, 15000)
 
 
 # Create a group for obstacles (currently empty, but you can add obstacles here)
@@ -694,6 +720,7 @@ def pause_menu():
 
 # Upgrade Page function ------------------------------------------------
 
+# Define the Upgrade class
 class Upgrade:
     def __init__(self, name, description, effect, logo_image_path):
         self.name = name
@@ -702,7 +729,11 @@ class Upgrade:
         self.logo_image = pygame.image.load(logo_image_path).convert_alpha()  # Load the logo image
 
     def apply(self, player):
-        self.effect(player)
+        if self.name == "Bunger Rain":
+            enable_bunger_spawn(player)
+        else:
+            self.effect(player)
+
 
 # Upgrade effects
 def increase_speed(player):
@@ -715,13 +746,25 @@ def increase_health(player):
     player.max_hp += 20  # Increase max HP
     player.hp = min(player.hp + 20, player.max_hp)  # Heal the player, but do not exceed max HP
 
+# Add this at the top of your file
+bunger_spawn_count = 0  # Initialize the counter for Bunger Rain upgrade
 
+def enable_bunger_spawn(player):
+    global bungerSpawn, bunger_spawn_count
+    bungerSpawn = True
+    bunger_spawn_count += 1  # Increase the count each time the upgrade is selected
+    print(f"Bunger Rain upgrade activated! Bungers will spawn at level {bunger_spawn_count}.")
+
+
+
+# Add the Bunger upgrade to the upgrades pool
 upgrades_pool = [
     Upgrade("Speed Boost", "Increases player's speed by 1.", increase_speed, 'Pictures/Boot.png'),
     Upgrade("Damage Boost", "Increases gun damage by 5.", increase_damage, 'Pictures/DamagePlus.png'),
     Upgrade("Health Boost", "Increases max health by 20 and heals 20 HP.", increase_health, 'Pictures/HealCross.png'),
-    # Add more upgrades with their logos...
+    Upgrade("Bunger Rain", "Bungers will start raining down!", enable_bunger_spawn, 'Pictures/Bunger.png'),
 ]
+
 
 # Function to select random upgrades from the pool
 import random
@@ -802,12 +845,12 @@ def Upgrade_Page(player):
 # Reset the game state ------------------------------------------------
 def reset_game():
     """Reset the game state to its initial configuration."""
-    global player, all_sprites, bullets, candies, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
+    global player, all_sprites, bullets, Pickup, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
 
     # Clear all sprite groups to ensure no lingering objects
     all_sprites.empty()
     bullets.empty()
-    candies.empty()
+    Pickup.empty()
     enemies.empty()
     obstacles.empty()
 
@@ -817,7 +860,7 @@ def reset_game():
 
     # Reset the sprite groups
     bullets = pygame.sprite.Group()
-    candies = pygame.sprite.Group()
+    Pickup = pygame.sprite.Group()
     enemies = pygame.sprite.Group()  # Use a general enemies group instead of slimes
     obstacles = pygame.sprite.Group()  # Recreate the group for obstacles (currently empty)
 
@@ -934,6 +977,9 @@ def draw_GameUI():
 # Show the title screen before starting the main game loop
 title_screen()
 
+# Initialize the bungerSpawn flag
+bungerSpawn = False
+
 # Initialize the start time and total paused time
 start_time = pygame.time.get_ticks()
 total_paused_time = 0
@@ -972,8 +1018,15 @@ while running:
         # Spawn a new candy every 5 seconds
         if event.type == candy_spawn_event and not player_dead:
             candy = Candy('Pictures/Candy.png')
-            candies.add(candy)
+            Pickup.add(candy)
             all_sprites.add(candy)
+
+        if event.type == bunger_spawn_event and bungerSpawn and not player_dead:
+            print(f"Spawning {bunger_spawn_count} bungers.")  # Debugging statement
+            for _ in range(bunger_spawn_count):  # Spawn multiple bungers based on the count
+                bunger = Bunger('Pictures/BUNGER.png')
+                Pickup.add(bunger)  # Add the Bunger to the Pickup group for collision detection
+                all_sprites.add(bunger)  # Add the Bunger to the all_sprites group
 
         # Spawn a new slime every # seconds
         #if event.type == slime_spawn_event and not player_dead:
@@ -1007,7 +1060,7 @@ while running:
         if not player_dead:
             keys = pygame.key.get_pressed()
             mouse_pos = pygame.mouse.get_pos()
-            player.update(keys, obstacles, candies, enemies, width, height, mouse_pos)
+            player.update(keys, obstacles, Pickup, Bunger, enemies, width, height, mouse_pos)
 
             if player.get_hp() <= 0 and not player_dead:
                 player_dead = True
