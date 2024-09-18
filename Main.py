@@ -90,6 +90,8 @@ class Player(pygame.sprite.Sprite):
         self.rotated_gun = self.gun_image  # Start with the gun's default image
         self.gun_rect = self.rotated_gun.get_rect(center=self.rect.center)  # Position gun initially
 
+        # Initialize an inventory to track upgrades
+        self.inventory = {}
 
     def update(self, keys, obstacles, Pickup, Bunger, slimes, screen_width, screen_height, mouse_pos):
         # Movement logic with WASD keys
@@ -238,6 +240,7 @@ class Player(pygame.sprite.Sprite):
         self.rotated_gun = rotated_gun_image
         self.gun_rect = self.rotated_gun.get_rect(center=(gun_x, gun_y))
 
+    # Draw the player and gun on the screen
     def draw(self, surface):
         """Draw the player and the rotating gun on the screen."""
         # First, draw the player
@@ -246,12 +249,21 @@ class Player(pygame.sprite.Sprite):
         # Then, draw the gun, ensuring it's drawn after the player
         surface.blit(self.rotated_gun, self.gun_rect)
 
+    # Shooting function
     def shoot(self):
         current_time = pygame.time.get_ticks()
         if current_time - self.last_shot_time >= self.gun.fire_rate:
             self.last_shot_time = current_time
             return Projectile(self.gun_rect.center, pygame.mouse.get_pos(), self.gun.bullet_image, self.gun.bullet_speed, self.gun.damage)
         return None
+
+    # Inventory function
+    def add_upgrade_to_inventory(self, upgrade_name, upgrade_logo):
+        """Add an upgrade to the player's inventory."""
+        if upgrade_name in self.inventory:
+            self.inventory[upgrade_name]['count'] += 1
+        else:
+            self.inventory[upgrade_name] = {'count': 1, 'logo': upgrade_logo}
 
 # Define the Bullet/Projectile class
 class Projectile(pygame.sprite.Sprite):
@@ -675,8 +687,20 @@ def pause_menu():
 
         # Draw the title "Morp(1)"
         title_text = title_font.render('Morp(1)', True, black)
-        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 150))
+        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 250))
         screen.blit(title_text, title_rect)
+
+        # Draw the player's inventory
+        inventory_y_start = height // 2 - 200
+        inventory_x_start = width // 2 - 300
+        for i, (upgrade_name, upgrade_info) in enumerate(player.inventory.items()):
+            # Draw the upgrade logo
+            logo_pos = (inventory_x_start, inventory_y_start + i * 70)
+            screen.blit(upgrade_info['logo'], logo_pos)
+
+            # Draw the count of upgrades
+            count_text = font.render(f'x{upgrade_info["count"]}', True, black)
+            screen.blit(count_text, (inventory_x_start + 80, logo_pos[1] + 20))
 
         # Draw the buttons (Resume, Title Screen, and Quit)
         pygame.draw.rect(screen, green, resume_button)
@@ -718,6 +742,7 @@ def pause_menu():
                 if event.key == pygame.K_ESCAPE:
                     return False  # Resume the game if ESC is pressed
 
+
 # Upgrade Page function ------------------------------------------------
 
 # Define the Upgrade class
@@ -734,6 +759,9 @@ class Upgrade:
         else:
             self.effect(player)
 
+        # Add upgrade to the player's inventory
+        player.add_upgrade_to_inventory(self.name, self.logo_image)
+
 
 # Upgrade effects
 def increase_speed(player):
@@ -746,8 +774,8 @@ def increase_health(player):
     player.max_hp += 20  # Increase max HP
     player.hp = min(player.hp + 20, player.max_hp)  # Heal the player, but do not exceed max HP
 
-# Add this at the top of your file
 bunger_spawn_count = 0  # Initialize the counter for Bunger Rain upgrade
+
 
 def enable_bunger_spawn(player):
     global bungerSpawn, bunger_spawn_count
@@ -1037,6 +1065,7 @@ while running:
         # Spawn enemies according to the pool every # seconds
         if event.type == Enemy_Spawn_Timer and not player_dead:
             spawn_random_enemies(player)
+
         if event.type == Enemy_Spawn_Timer_Slow and not player_dead:
             spawn_random_enemies_Slow(player)
 
