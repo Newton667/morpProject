@@ -265,7 +265,11 @@ class Player(pygame.sprite.Sprite):
         else:
             self.inventory[upgrade_name] = {'count': 1, 'logo': upgrade_logo}
 
-# Define the Bullet/Projectile class
+    # Function to draw the XP bar and level text
+    def get_level(self):
+        return self.level
+
+# Define the Projectile class (moved outside of the Player class)
 class Projectile(pygame.sprite.Sprite):
     def __init__(self, pos, target, image_path, speed, damage):
         super().__init__()
@@ -290,42 +294,6 @@ class Projectile(pygame.sprite.Sprite):
         if self.rect.right < 0 or self.rect.left > width or self.rect.bottom < 0 or self.rect.top > height:
             self.kill()
 
-    def get_hp(self):
-        return self.hp
-
-
-    def gain_xp(self, amount):
-        self.xp += amount
-        print(f"Player gained {amount} XP. Current XP: {self.xp}/{self.xp_needed}")
-
-    def get_xp_progress(self):
-        return self.xp / self.xp_needed
-
-    def check_level_up(self):
-        if self.xp >= self.xp_needed:
-            self.level += 1
-            self.xp -= self.xp_needed  # Carry over remaining XP
-            self.xp_needed = int(self.xp_needed * 1.2)
-            print(f"Level Up! Player is now level {self.level}.")
-            Upgrade_Page(self)  # Call the upgrade page
-
-    def check_window_collision(self, screen_width, screen_height):
-        if self.rect.left < 0:
-            self.rect.left = 0
-        if self.rect.right > screen_width:
-            self.rect.right = screen_width
-        if self.rect.top < 0:
-            self.rect.top = 0
-        if self.rect.bottom > screen_height:
-            self.rect.bottom = screen_height
-
-    # Function to draw the XP bar and level text
-    def get_hp(self):
-        return self.hp
-
-    # Function to draw the XP bar and level text
-    def get_level(self):
-        return self.level
 
 # Define the Candy class
 class Candy(pygame.sprite.Sprite):
@@ -446,12 +414,18 @@ class Golem(Enemy):
         super().__init__('Pictures/Golem.png', speed=2, hp=30, damage=25)  # Set golem's damage to 20
         self.spawn_within_screen()
 
+class FastFish(Enemy):
+    def __init__(self):
+        super().__init__('Pictures/FastFish.png', speed=5, hp=5, damage=5)  # Set fast fish's damage to 5
+        self.spawn_within_screen()
+
 # Enemy pool where each entry is a tuple of (level, EnemyClass)
 enemy_pool = [
     (1, Slime),  # Slime starts appearing at level 1
     (2, Slime),  # Add more enemy types for higher levels
     (4, BlueSlime),
     (5, Slime),
+    (10, FastFish),
     # Add more enemy types for higher levels
 ]
 
