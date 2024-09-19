@@ -32,13 +32,16 @@ sky_blue = (135, 206, 235)
 
 # Define the Gun class to support multiple types of guns
 class Gun:
-    def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed):
+    def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed, spread_angle=0, projectile_count=1):
         self.name = name
         self.image = pygame.image.load(image_path).convert_alpha()
         self.bullet_image = bullet_image
         self.damage = damage
         self.fire_rate = fire_rate  # Cooldown between shots in milliseconds
         self.bullet_speed = bullet_speed
+        self.spread_angle = spread_angle  # Spread angle in degrees
+        self.projectile_count = projectile_count  # Number of bullets to fire
+
 
 # Define the Player class
 class Player(pygame.sprite.Sprite):
@@ -254,7 +257,29 @@ class Player(pygame.sprite.Sprite):
         current_time = pygame.time.get_ticks()
         if current_time - self.last_shot_time >= self.gun.fire_rate:
             self.last_shot_time = current_time
-            return Projectile(self.gun_rect.center, pygame.mouse.get_pos(), self.gun.bullet_image, self.gun.bullet_speed, self.gun.damage)
+            bullets = []
+
+            # Calculate the base angle between the player and the mouse position
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+            rel_x, rel_y = mouse_x - self.gun_rect.centerx, mouse_y - self.gun_rect.centery
+            base_angle = math.atan2(-rel_y, rel_x)  # Negative for counterclockwise rotation
+
+            # Spread adjustment
+            spread_radians = math.radians(self.gun.spread_angle)
+            start_angle = base_angle - spread_radians * (self.gun.projectile_count - 1) / 2
+
+            # Create the projectiles
+            for i in range(self.gun.projectile_count):
+                angle = start_angle + i * spread_radians
+                # Calculate direction vector from the angle
+                direction = (math.cos(angle), -math.sin(angle))
+
+                # Create a new projectile with direction
+                bullet = Projectile(self.gun_rect.center, direction, self.gun.bullet_image, self.gun.bullet_speed,
+                                    self.gun.damage)
+                bullets.append(bullet)
+
+            return bullets
         return None
 
     # Inventory function
@@ -271,20 +296,12 @@ class Player(pygame.sprite.Sprite):
 
 # Define the Projectile class (moved outside of the Player class)
 class Projectile(pygame.sprite.Sprite):
-    def __init__(self, pos, target, image_path, speed, damage):
+    def __init__(self, pos, direction, image_path, speed, damage):
         super().__init__()
         self.image = pygame.image.load(image_path).convert_alpha()
         self.rect = self.image.get_rect(center=pos)
         self.damage = damage
-
-        # Calculate the direction to move towards the target
-        direction_x = target[0] - pos[0]
-        direction_y = target[1] - pos[1]
-        distance = math.hypot(direction_x, direction_y)
-        if distance > 0:
-            self.velocity = (direction_x / distance * speed, direction_y / distance * speed)  # Bullet speed
-        else:
-            self.velocity = (0, 0)
+        self.velocity = (direction[0] * speed, direction[1] * speed)
 
     def update(self):
         self.rect.x += self.velocity[0]
@@ -293,6 +310,8 @@ class Projectile(pygame.sprite.Sprite):
         # Remove bullet if it's off screen
         if self.rect.right < 0 or self.rect.left > width or self.rect.bottom < 0 or self.rect.top > height:
             self.kill()
+
+
 
 
 # Define the Candy class
@@ -545,8 +564,9 @@ def draw_timer(screen, time):
     screen.blit(text, text_rect)
 
 
-# Create guns
-pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, fire_rate=500, bullet_speed=10)
+# Create guns/weapons
+pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, fire_rate=500, bullet_speed=10, spread_angle=1, projectile_count=1)
+katana = Gun("Katana", 'Pictures/Katana.png', 'Pictures/Slash.png', damage=5, fire_rate=250, bullet_speed=10, spread_angle=0, projectile_count=1)
 
 # Create the player instance with the pistol gun
 player = Player(640, 360, 'Pictures/Morp.png', pistol)
@@ -848,6 +868,7 @@ def Upgrade_Page(player):
 def reset_game():
     """Reset the game state to its initial configuration."""
     global player, all_sprites, bullets, Pickup, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
+    global bungerSpawn, bunger_spawn_count  # Include global variables related to upgrades
 
     # Clear all sprite groups to ensure no lingering objects
     all_sprites.empty()
@@ -856,8 +877,18 @@ def reset_game():
     enemies.empty()
     obstacles.empty()
 
-    # Recreate the player instance with the pistol gun and reset HP
+    # Reset global variables related to upgrades
+    bungerSpawn = False
+    bunger_spawn_count = 0
+
+    # Recreate the player instance with the pistol gun and reset HP and inventory
     player = Player(640, 360, 'Pictures/Morp.png', pistol)
+    player.inventory = {}  # Reset the inventory
+    player.speed = 3       # Reset player speed
+    player.max_hp = 100    # Reset player max HP
+    player.hp = 100        # Reset player HP to max HP
+    player.gun.damage = 5  # Reset player gun damage to its initial value
+
     all_sprites.add(player)  # Add player to the all_sprites group
 
     # Reset the sprite groups
@@ -1012,10 +1043,11 @@ while running:
 
         # Shooting (left mouse click)
         if not player_dead and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            bullet = player.shoot()
-            if bullet:
-                bullets.add(bullet)
-                all_sprites.add(bullet)
+            bullets_fired = player.shoot()
+            if bullets_fired:
+                for bullet in bullets_fired:
+                    bullets.add(bullet)
+                    all_sprites.add(bullet)
 
         # Spawn a new candy every 5 seconds
         if event.type == candy_spawn_event and not player_dead:
