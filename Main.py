@@ -32,15 +32,17 @@ sky_blue = (135, 206, 235)
 
 # Define the Gun class to support multiple types of guns
 class Gun:
-    def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed, spread_angle=0, projectile_count=1):
+    def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed, spread_angle=0, projectile_count=1, automatic_fire=False):
         self.name = name
         self.image = pygame.image.load(image_path).convert_alpha()
         self.bullet_image = bullet_image
         self.damage = damage
         self.fire_rate = fire_rate  # Cooldown between shots in milliseconds
         self.bullet_speed = bullet_speed
-        self.spread_angle = spread_angle  # Spread angle in degrees
-        self.projectile_count = projectile_count  # Number of bullets to fire
+        self.spread_angle = spread_angle  # Spread angle for the bullets
+        self.projectile_count = projectile_count  # Number of projectiles fired at once
+        self.automatic_fire = automatic_fire  # Whether the gun can fire automatically
+
 
 
 # Define the Player class
@@ -96,7 +98,7 @@ class Player(pygame.sprite.Sprite):
         # Initialize an inventory to track upgrades
         self.inventory = {}
 
-    def update(self, keys, obstacles, Pickup, Bunger, slimes, screen_width, screen_height, mouse_pos):
+    def update(self, keys, obstacles, Pickup, Bunger, slimes, screen_width, screen_height, mouse_pos, mouse_held, Lollipop):
         # Movement logic with WASD keys
         if keys[pygame.K_w]:
             self.rect.y -= self.speed
@@ -132,6 +134,8 @@ class Player(pygame.sprite.Sprite):
                 self.check_level_up()
             elif isinstance(pickup, Bunger):
                 self.gain_HP(100)  # Gain 100 HP on Bunger collection
+            elif isinstance(pickup, Lollipop):
+                self.gain_xp(10)
 
         # Rotate the gun to face the mouse cursor and position it around the player
         self.rotate_gun(mouse_pos)
@@ -145,6 +149,14 @@ class Player(pygame.sprite.Sprite):
         # Check for collisions with obstacles (if any)
         if pygame.sprite.spritecollide(self, obstacles, False):
             self.hp -= 1  # Reduce HP on collision
+
+        # Handle automatic firing
+        if mouse_held and self.gun.automatic_fire:
+            bullets = self.shoot()
+            if bullets:
+                return bullets
+
+        return None
 
     def take_damage(self, amount):
         # Get the current time
@@ -178,6 +190,7 @@ class Player(pygame.sprite.Sprite):
     def gain_xp(self, amount):
         self.xp += amount
         print(f"Player gained {amount} XP. Current XP: {self.xp}/{self.xp_needed}")
+        self.check_level_up()
 
     def get_xp_progress(self):
         return self.xp / self.xp_needed
@@ -195,14 +208,29 @@ class Player(pygame.sprite.Sprite):
 
     def spawn_enemies_based_on_level(self):
         global enemies, all_sprites
-        # Go through the enemy pool and add the appropriate enemies for the current level
-        for pool in (enemy_pool, enemyBoss_pool):  # Iterate over both enemy pools
-            for level, EnemyClass in pool:
-                if level <= self.level:
-                    # Create a new enemy of the specified class and add it to the groups
-                    new_enemy = EnemyClass()
-                    enemies.add(new_enemy)
-                    all_sprites.add(new_enemy)
+        # Go through the enemy pool and add the appropriate regular enemies for the current level
+        for level, EnemyClass in enemy_pool:
+            if level <= self.level:
+                # Create a new enemy of the specified class and add it to the groups
+                new_enemy = EnemyClass()
+                enemies.add(new_enemy)
+                all_sprites.add(new_enemy)
+
+    def spawn_boss_based_on_level(self):
+        global enemies, all_sprites
+        # Go through the boss pool and add the appropriate bosses for the current level
+        for level, BossClass in enemyBoss_pool:
+            if level == self.level:  # Only spawn bosses when the player's level matches exactly
+                new_boss = BossClass()
+                enemies.add(new_boss)
+                all_sprites.add(new_boss)
+
+        # Go through the boss pool and add the appropriate bosses for the current level
+        for level, BossClass in enemyBoss_pool:
+            if level == self.level:  # Only spawn bosses when the player's level matches exactly
+                new_boss = BossClass()
+                enemies.add(new_boss)
+                all_sprites.add(new_boss)
 
     def check_window_collision(self, screen_width, screen_height):
         if self.rect.left < 0:
@@ -275,8 +303,7 @@ class Player(pygame.sprite.Sprite):
                 direction = (math.cos(angle), -math.sin(angle))
 
                 # Create a new projectile with direction
-                bullet = Projectile(self.gun_rect.center, direction, self.gun.bullet_image, self.gun.bullet_speed,
-                                    self.gun.damage)
+                bullet = Projectile(self.gun_rect.center, direction, self.gun.bullet_image, self.gun.bullet_speed, self.gun.damage)
                 bullets.append(bullet)
 
             return bullets
@@ -312,7 +339,7 @@ class Projectile(pygame.sprite.Sprite):
             self.kill()
 
 
-
+#Pickup Classes ------------------------------------------------
 
 # Define the Candy class
 class Candy(pygame.sprite.Sprite):
@@ -338,10 +365,24 @@ class Bunger(pygame.sprite.Sprite):
         self.rect.x = random.randint(0, width - self.rect.width)
         self.rect.y = random.randint(0, height - self.rect.height)
 
+# Define the Lolipop class
+class Lollipop(pygame.sprite.Sprite):
+    def __init__(self, image_path):
+        super().__init__()
+        self.image = pygame.image.load(image_path).convert_alpha()
+        self.rect = self.image.get_rect()
+        self.spawn_random()
+
+    def spawn_random(self):
+        self.rect.x = random.randint(0, width - self.rect.width)
+        self.rect.y = random.randint(0, height - self.rect.height)
+
+#------------------------------------------------
+
 #Enemy Class
 # Define the Enemy base class
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, image_path, speed, hp, damage):
+    def __init__(self, image_path, speed, hp, damage, xp_reward):
         super().__init__()
         self.image = pygame.image.load(image_path).convert_alpha()
         self.original_image = self.image.copy()  # Store the original image for resetting after blinking
@@ -351,6 +392,7 @@ class Enemy(pygame.sprite.Sprite):
         self.hp = hp
         self.speed = speed
         self.damage = damage  # New damage attribute
+        self.xp_reward = xp_reward  # XP awarded when enemy is killed
         self.direction = 'right'  # Initialize enemy facing right
 
         # Damage blinking attributes
@@ -385,7 +427,7 @@ class Enemy(pygame.sprite.Sprite):
         self.rect.x += int(direction_x * self.speed)
         self.rect.y += int(direction_y * self.speed)
 
-    def enemy_take_damage(self, damage):
+    def enemy_take_damage(self, damage, player):
         """Handles damage and triggers blinking effect."""
         self.hp -= damage
         print(f"{self.__class__.__name__} took {damage} damage. Current HP: {self.hp}")
@@ -400,6 +442,8 @@ class Enemy(pygame.sprite.Sprite):
         self.image = red_tinted_image
 
         if self.hp <= 0:
+            player.gain_xp(self.xp_reward)  # Player gains XP when the enemy is killed
+            print(f"Player gained {self.xp_reward} XP for killing {self.__class__.__name__}")
             self.kill()  # Remove the enemy when HP reaches 0
 
     def update(self):
@@ -420,22 +464,22 @@ class Enemy(pygame.sprite.Sprite):
 # Define the Slime class (inherits from Enemy) ----------------------------
 class Slime(Enemy):
     def __init__(self):
-        super().__init__('Pictures/Slime.png', speed=2, hp=10, damage=10)  # Set slime's damage to 10
+        super().__init__('Pictures/Slime.png', speed=2, hp=10, damage=10, xp_reward=10)  # Set slime's damage to 10
         self.spawn_within_screen()
 
 class BlueSlime(Enemy):
     def __init__(self):
-        super().__init__('Pictures/BlueSlime.png', speed=3, hp=15, damage=15)  # Set blue slime's damage to 15
+        super().__init__('Pictures/BlueSlime.png', speed=3, hp=15, damage=15, xp_reward=20)  # Set blue slime's damage to 15
         self.spawn_within_screen()
 
 class Golem(Enemy):
     def __init__(self):
-        super().__init__('Pictures/Golem.png', speed=2, hp=30, damage=25)  # Set golem's damage to 20
+        super().__init__('Pictures/Golem.png', speed=2, hp=100, damage=50, xp_reward=50)  # Set golem's damage to 20
         self.spawn_within_screen()
 
 class FastFish(Enemy):
     def __init__(self):
-        super().__init__('Pictures/FastFish.png', speed=5, hp=5, damage=5)  # Set fast fish's damage to 5
+        super().__init__('Pictures/FastFish.png', speed=5, hp=5, damage=5, xp_reward=10)  # Set fast fish's damage to 5
         self.spawn_within_screen()
 
 # Enemy pool where each entry is a tuple of (level, EnemyClass)
@@ -490,21 +534,21 @@ def spawn_random_enemies_Slow(player):
     enemies_to_spawn = {}
 
     # Determine which enemies to spawn based on the player's current level
-    for level, EnemyClass in enemyBoss_pool:
+    for level, BossClass in enemyBoss_pool:
         if player.level >= level:
             # Count how many times an enemy class appears
-            if EnemyClass in enemies_to_spawn:
-                enemies_to_spawn[EnemyClass] += 1
+            if BossClass in enemies_to_spawn:
+                enemies_to_spawn[BossClass] += 1
             else:
-                enemies_to_spawn[EnemyClass] = 1
+                enemies_to_spawn[BossClass] = 1
 
     # Spawn the enemies according to the count in enemies_to_spawn
     for EnemyClass, count in enemies_to_spawn.items():
         for _ in range(count):
             # Create a new enemy instance and add it to the groups
-            new_enemy = EnemyClass()
-            enemies.add(new_enemy)
-            all_sprites.add(new_enemy)
+            new_boss = EnemyClass()
+            enemies.add(new_boss)
+            all_sprites.add(new_boss)
 
 
 # Replace slimes group with a generic enemies group
@@ -565,8 +609,8 @@ def draw_timer(screen, time):
 
 
 # Create guns/weapons
-pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, fire_rate=500, bullet_speed=10, spread_angle=1, projectile_count=1)
-katana = Gun("Katana", 'Pictures/Katana.png', 'Pictures/Slash.png', damage=5, fire_rate=250, bullet_speed=10, spread_angle=0, projectile_count=1)
+pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, fire_rate=400, bullet_speed=10, spread_angle=1, projectile_count=1, automatic_fire=False)
+katana = Gun("Katana", 'Pictures/Katana.png', 'Pictures/Slash.png', damage=5, fire_rate=250, bullet_speed=10, spread_angle=0, projectile_count=1, automatic_fire=True)
 
 # Create the player instance with the pistol gun
 player = Player(640, 360, 'Pictures/Morp.png', pistol)
@@ -589,11 +633,15 @@ pygame.time.set_timer(Enemy_Spawn_Timer, 5000)
 
 # Slower enemy spawn timer
 Enemy_Spawn_Timer_Slow = pygame.USEREVENT + 3
-pygame.time.set_timer(Enemy_Spawn_Timer_Slow, 10000)
+pygame.time.set_timer(Enemy_Spawn_Timer_Slow, 30000)
 
 # Timer to spawn Bunger every 15 seconds
 bunger_spawn_event = pygame.USEREVENT + 4
 pygame.time.set_timer(bunger_spawn_event, 15000)
+
+# Timer to spawn Lollipop every 10 seconds
+lollipop_spawn_event = pygame.USEREVENT + 5
+pygame.time.set_timer(lollipop_spawn_event, 10000)
 
 
 # Create a group for obstacles (currently empty, but you can add obstacles here)
@@ -750,6 +798,8 @@ class Upgrade:
     def apply(self, player):
         if self.name == "Bunger Rain":
             enable_bunger_spawn(player)
+        if self.name == "Lollipop Rain":
+            enable_lollipop_spawn(player)
         else:
             self.effect(player)
 
@@ -777,6 +827,16 @@ def enable_bunger_spawn(player):
     bunger_spawn_count += 1  # Increase the count each time the upgrade is selected
     print(f"Bunger Rain upgrade activated! Bungers will spawn at level {bunger_spawn_count}.")
 
+def increase_attackSpeed(player):
+    player.gun.fire_rate -= 50
+
+lollipop_spawn_count = 0  # Initialize the counter for Lollipop Rain upgrade
+
+def enable_lollipop_spawn(player):
+    global lollipopSpawn, lollipop_spawn_count
+    lollipopSpawn = True
+    lollipop_spawn_count += 1
+    print(f"Lollipop Rain upgrade activated! Lollipops will spawn at level {lollipop_spawn_count}.")
 
 
 # Add the Bunger upgrade to the upgrades pool
@@ -785,6 +845,8 @@ upgrades_pool = [
     Upgrade("Damage Boost", "Increases gun damage by 5.", increase_damage, 'Pictures/DamagePlus.png'),
     Upgrade("Health Boost", "Increases max health by 20 and heals 20 HP.", increase_health, 'Pictures/HealCross.png'),
     Upgrade("Bunger Rain", "Bungers will start raining down!", enable_bunger_spawn, 'Pictures/Bunger.png'),
+    Upgrade("Attack Speed", "Increases attack speed by 50.", increase_attackSpeed, 'Pictures/AttackSpeed.png'),
+    Upgrade("Lollipop Rain", "Lollipops will start raining down!", enable_lollipop_spawn, 'Pictures/Lollipop.png'),
 ]
 
 
@@ -869,6 +931,7 @@ def reset_game():
     """Reset the game state to its initial configuration."""
     global player, all_sprites, bullets, Pickup, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
     global bungerSpawn, bunger_spawn_count  # Include global variables related to upgrades
+    global lollipopSpawn, lollipop_spawn_count # Include global variables related to upgrades
 
     # Clear all sprite groups to ensure no lingering objects
     all_sprites.empty()
@@ -880,6 +943,7 @@ def reset_game():
     # Reset global variables related to upgrades
     bungerSpawn = False
     bunger_spawn_count = 0
+    lollipop_spawn_count = 0
 
     # Recreate the player instance with the pistol gun and reset HP and inventory
     player = Player(640, 360, 'Pictures/Morp.png', pistol)
@@ -1013,18 +1077,28 @@ title_screen()
 # Initialize the bungerSpawn flag
 bungerSpawn = False
 
+# Initialize the lollipopSpawn flag
+lollipopSpawn = False
+
 # Initialize the start time and total paused time
 start_time = pygame.time.get_ticks()
 total_paused_time = 0
 pause_start_time = None
 
 # Main game loop
+# Main game loop
 running = True
 player_dead = False  # Track if the player is dead
 paused = False  # Ensure paused starts as False
 death_time = 0  # Track the time of death
 
+# Create a clock to manage frame rate
+clock = pygame.time.Clock()
+
 while running:
+
+    mouse_held = pygame.mouse.get_pressed()[0]  # Check if the left mouse button is held
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -1041,13 +1115,15 @@ while running:
                 paused = True
                 pause_start_time = pygame.time.get_ticks()
 
-        # Shooting (left mouse click)
+        # Manual shooting (left mouse click)
         if not player_dead and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            bullets_fired = player.shoot()
-            if bullets_fired:
-                for bullet in bullets_fired:
-                    bullets.add(bullet)
-                    all_sprites.add(bullet)
+            # Fire only on mouse click if automatic fire is off
+            if not player.gun.automatic_fire:
+                bullets_fired = player.shoot()  # This handles a single click shoot
+                if bullets_fired:
+                    for bullet in bullets_fired:
+                        bullets.add(bullet)
+                        all_sprites.add(bullet)
 
         # Spawn a new candy every 5 seconds
         if event.type == candy_spawn_event and not player_dead:
@@ -1055,6 +1131,7 @@ while running:
             Pickup.add(candy)
             all_sprites.add(candy)
 
+        # Spawn Bungers if Bunger Rain upgrade is active
         if event.type == bunger_spawn_event and bungerSpawn and not player_dead:
             print(f"Spawning {bunger_spawn_count} bungers.")  # Debugging statement
             for _ in range(bunger_spawn_count):  # Spawn multiple bungers based on the count
@@ -1062,18 +1139,21 @@ while running:
                 Pickup.add(bunger)  # Add the Bunger to the Pickup group for collision detection
                 all_sprites.add(bunger)  # Add the Bunger to the all_sprites group
 
-        # Spawn a new slime every # seconds
-        #if event.type == slime_spawn_event and not player_dead:
-        #    slime = Slime()
-        #    enemies.add(slime)
-        #    all_sprites.add(slime)  # Add slime to both enemies and all_sprites
+        # Spawn Lollipops if Lollipop Rain upgrade is active
+        if event.type == lollipop_spawn_event and lollipopSpawn and not player_dead:
+            print(f"Spawning {lollipop_spawn_count} lollipops.")
+            for _ in range(lollipop_spawn_count):
+                Lollipop = Candy('Pictures/Lollipop.png')
+                Pickup.add(Lollipop)
+                all_sprites.add(Lollipop)
 
-        # Spawn enemies according to the pool every # seconds
+        # Inside the main game loop:
         if event.type == Enemy_Spawn_Timer and not player_dead:
-            spawn_random_enemies(player)
+            player.spawn_enemies_based_on_level()
 
+        # Spawn boss enemies every 10 seconds or based on level
         if event.type == Enemy_Spawn_Timer_Slow and not player_dead:
-            spawn_random_enemies_Slow(player)
+            player.spawn_boss_based_on_level()
 
     # Pause menu logic
     if paused:
@@ -1095,7 +1175,17 @@ while running:
         if not player_dead:
             keys = pygame.key.get_pressed()
             mouse_pos = pygame.mouse.get_pos()
-            player.update(keys, obstacles, Pickup, Bunger, enemies, width, height, mouse_pos)
+
+            # Player automatic shooting check
+            if mouse_held and player.gun.automatic_fire:
+                new_bullets = player.shoot()
+                if new_bullets:
+                    for bullet in new_bullets:
+                        bullets.add(bullet)
+                        all_sprites.add(bullet)
+
+            # Update player and other elements
+            player.update(keys, obstacles, Pickup, Bunger, enemies, width, height, mouse_pos, mouse_held, Lollipop)
 
             if player.get_hp() <= 0 and not player_dead:
                 player_dead = True
@@ -1124,8 +1214,8 @@ while running:
             for bullet in bullets:
                 enemy_hit_list = pygame.sprite.spritecollide(bullet, enemies, False)
                 for enemy in enemy_hit_list:
-                    enemy.enemy_take_damage(bullet.damage)
-                    bullet.kill()
+                    enemy.enemy_take_damage(bullet.damage, player)  # Pass the player to award XP on enemy death
+                    bullet.kill()  # Remove the bullet once it hits an enemy
 
         # Draw the game state
         draw_GameUI()
@@ -1140,7 +1230,7 @@ while running:
         pygame.display.flip()
 
         # Cap frame rate
-        pygame.time.Clock().tick(60)
+        clock.tick(60)  # Ensure the game runs at 60 FPS
 
 # Quit the game when the loop ends
 pygame.quit()
