@@ -206,6 +206,9 @@ class Player(pygame.sprite.Sprite):
             # Spawn new enemies based on the player's level
             self.spawn_enemies_based_on_level()
 
+            # Spawn new bosses based on the player's level
+            self.spawn_boss_based_on_level()
+
     def spawn_enemies_based_on_level(self):
         global enemies, all_sprites
         # Go through the enemy pool and add the appropriate regular enemies for the current level
@@ -218,19 +221,13 @@ class Player(pygame.sprite.Sprite):
 
     def spawn_boss_based_on_level(self):
         global enemies, all_sprites
-        # Go through the boss pool and add the appropriate bosses for the current level
+        # Ensure that bosses can spawn if the level is greater than or equal to the boss's level requirement
         for level, BossClass in enemyBoss_pool:
-            if level == self.level:  # Only spawn bosses when the player's level matches exactly
+            if level <= self.level:  # Spawn bosses at or after the required level
                 new_boss = BossClass()
                 enemies.add(new_boss)
                 all_sprites.add(new_boss)
-
-        # Go through the boss pool and add the appropriate bosses for the current level
-        for level, BossClass in enemyBoss_pool:
-            if level == self.level:  # Only spawn bosses when the player's level matches exactly
-                new_boss = BossClass()
-                enemies.add(new_boss)
-                all_sprites.add(new_boss)
+                print(f"Boss {new_boss.__class__.__name__} spawned!")  # Debugging print
 
     def check_window_collision(self, screen_width, screen_height):
         if self.rect.left < 0:
@@ -474,8 +471,9 @@ class BlueSlime(Enemy):
 
 class Golem(Enemy):
     def __init__(self):
-        super().__init__('Pictures/Golem.png', speed=2, hp=100, damage=50, xp_reward=50)  # Set golem's damage to 20
+        super().__init__('Pictures/Golem.png', speed=2, hp=100, damage=50, xp_reward=50)  # Make sure to inherit properly
         self.spawn_within_screen()
+
 
 class FastFish(Enemy):
     def __init__(self):
@@ -502,53 +500,56 @@ def get_available_enemies(level):
 
 def get_available_enemiesBoss(level):
     """Return a list of enemy classes available for the given level."""
-    return [EnemyClass for lvl, EnemyClass in enemyBoss_pool if lvl <= level]
+    return [BossClass for lvl, BossClass in enemyBoss_pool if lvl <= level]
 
 def spawn_random_enemies(player):
-    """Spawn enemies based on the player's level and the enemy pool."""
+    """Spawn regular enemies based on the player's level and the enemy pool."""
     global enemies, all_sprites
+
     # Dictionary to keep track of how many of each enemy type to spawn
     enemies_to_spawn = {}
 
-    # Determine which enemies to spawn based on the player's current level
+    # Determine which regular enemies to spawn based on the player's current level
     for level, EnemyClass in enemy_pool:
         if player.level >= level:
-            # Count how many times an enemy class appears
             if EnemyClass in enemies_to_spawn:
                 enemies_to_spawn[EnemyClass] += 1
             else:
                 enemies_to_spawn[EnemyClass] = 1
 
-    # Spawn the enemies according to the count in enemies_to_spawn
+    # Spawn the regular enemies according to the count in enemies_to_spawn
     for EnemyClass, count in enemies_to_spawn.items():
         for _ in range(count):
-            # Create a new enemy instance and add it to the groups
             new_enemy = EnemyClass()
             enemies.add(new_enemy)
             all_sprites.add(new_enemy)
 
-def spawn_random_enemies_Slow(player):
-    """Spawn enemies based on the player's level and the enemy pool."""
+def spawn_boss_enemies(player):
+    """Spawn boss enemies based on the player's level and the boss enemy pool."""
     global enemies, all_sprites
-    # Dictionary to keep track of how many of each enemy type to spawn
-    enemies_to_spawn = {}
 
-    # Determine which enemies to spawn based on the player's current level
+    # Dictionary to keep track of how many of each boss type to spawn
+    bosses_to_spawn = {}
+
+    # Determine which bosses to spawn based on the player's current level
     for level, BossClass in enemyBoss_pool:
-        if player.level >= level:
-            # Count how many times an enemy class appears
-            if BossClass in enemies_to_spawn:
-                enemies_to_spawn[BossClass] += 1
+        if player.level >= level:  # Adjust to spawn based on level thresholds
+            if BossClass in bosses_to_spawn:
+                bosses_to_spawn[BossClass] += 1
             else:
-                enemies_to_spawn[BossClass] = 1
+                bosses_to_spawn[BossClass] = 1
 
-    # Spawn the enemies according to the count in enemies_to_spawn
-    for EnemyClass, count in enemies_to_spawn.items():
+    # Spawn the bosses according to the count in bosses_to_spawn
+    for BossClass, count in bosses_to_spawn.items():
         for _ in range(count):
-            # Create a new enemy instance and add it to the groups
-            new_boss = EnemyClass()
-            enemies.add(new_boss)
-            all_sprites.add(new_boss)
+            new_boss = BossClass()  # Correctly instantiate the boss
+            enemies.add(new_boss)  # Add the instance to enemies group
+            all_sprites.add(new_boss)  # Also add to all_sprites
+            print(f"Boss {new_boss.__class__.__name__} spawned!")  # Debugging print
+
+
+
+
 
 
 # Replace slimes group with a generic enemies group
@@ -627,13 +628,13 @@ slimes = pygame.sprite.Group()
 candy_spawn_event = pygame.USEREVENT + 1
 pygame.time.set_timer(candy_spawn_event, 5000)
 
-# Timer to spawn slimes/enemies every # seconds
+# Timer to spawn regular enemies every X seconds
 Enemy_Spawn_Timer = pygame.USEREVENT + 2
-pygame.time.set_timer(Enemy_Spawn_Timer, 5000)
+pygame.time.set_timer(Enemy_Spawn_Timer, 5000)  # Regular enemies every 5 seconds
 
-# Slower enemy spawn timer
-Enemy_Spawn_Timer_Slow = pygame.USEREVENT + 3
-pygame.time.set_timer(Enemy_Spawn_Timer_Slow, 30000)
+# Timer to spawn bosses every Y seconds (separate timer)
+Boss_Spawn_Timer = pygame.USEREVENT + 3
+pygame.time.set_timer(Boss_Spawn_Timer, 30000)  # Bosses every 30 seconds
 
 # Timer to spawn Bunger every 15 seconds
 bunger_spawn_event = pygame.USEREVENT + 4
@@ -1151,8 +1152,8 @@ while running:
         if event.type == Enemy_Spawn_Timer and not player_dead:
             player.spawn_enemies_based_on_level()
 
-        # Spawn boss enemies every 10 seconds or based on level
-        if event.type == Enemy_Spawn_Timer_Slow and not player_dead:
+        # Spawn boss enemies every 30 seconds or based on level
+        if event.type == Boss_Spawn_Timer and not player_dead:
             player.spawn_boss_based_on_level()
 
     # Pause menu logic
