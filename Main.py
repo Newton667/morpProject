@@ -32,7 +32,7 @@ sky_blue = (135, 206, 235)
 
 # Define the Gun class to support multiple types of guns
 class Gun:
-    def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed, spread_angle=0, projectile_count=1, automatic_fire=False):
+    def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed, spread_angle=0, projectile_count=1, automatic_fire=False, bullet_duration=2000, piercing=False):
         self.name = name
         self.image = pygame.image.load(image_path).convert_alpha()
         self.bullet_image = bullet_image
@@ -42,10 +42,10 @@ class Gun:
         self.spread_angle = spread_angle  # Spread angle for the bullets
         self.projectile_count = projectile_count  # Number of projectiles fired at once
         self.automatic_fire = automatic_fire  # Whether the gun can fire automatically
+        self.bullet_duration = bullet_duration  # Duration of each projectile in milliseconds
+        self.piercing = piercing  # Whether projectiles can pierce through enemies
 
-
-
-# Define the Player class
+# Define the Player Class
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y, image_path, gun):
         super().__init__()
@@ -97,6 +97,32 @@ class Player(pygame.sprite.Sprite):
 
         # Initialize an inventory to track upgrades
         self.inventory = {}
+
+        # Base stats that upgrades will modify
+        self.base_damage = 0  # Additional damage from upgrades
+        self.base_fire_rate = 0  # Reduction in fire rate from upgrades
+
+        # Store the original base values of gun attributes for cumulative upgrades
+        self.gun_base_damage = gun.damage  # Base gun damage
+        self.gun_base_fire_rate = gun.fire_rate  # Base gun fire rate
+
+        # Apply upgrades initially
+        self.apply_upgrades_to_gun()
+
+    def equip_gun(self, gun):
+        """Equip a new gun and apply player upgrades to it."""
+        self.gun = gun
+        # Reset base attributes when equipping a new gun
+        self.gun_base_damage = self.gun.damage
+        self.gun_base_fire_rate = self.gun.fire_rate
+        self.apply_upgrades_to_gun()  # Apply any base upgrades to the new gun
+
+    def apply_upgrades_to_gun(self):
+        """Apply player upgrades to the equipped gun based on stored base values."""
+        # Calculate final damage and fire rate using base values with upgrades
+        self.gun.damage = self.gun_base_damage + self.base_damage
+        self.gun.fire_rate = max(100, self.gun_base_fire_rate - self.base_fire_rate)  # Ensures minimum fire rate
+
 
     def update(self, keys, obstacles, Pickup, Bunger, slimes, screen_width, screen_height, mouse_pos, mouse_held, Lollipop):
         # Movement logic with WASD keys
@@ -289,19 +315,37 @@ class Player(pygame.sprite.Sprite):
             rel_x, rel_y = mouse_x - self.gun_rect.centerx, mouse_y - self.gun_rect.centery
             base_angle = math.atan2(-rel_y, rel_x)  # Negative for counterclockwise rotation
 
-            # Spread adjustment
-            spread_radians = math.radians(self.gun.spread_angle)
-            start_angle = base_angle - spread_radians * (self.gun.projectile_count - 1) / 2
-
-            # Create the projectiles
-            for i in range(self.gun.projectile_count):
-                angle = start_angle + i * spread_radians
-                # Calculate direction vector from the angle
+            # Apply spread even for a single projectile by adding a random offset to the base angle
+            if self.gun.projectile_count == 1:
+                # Random spread offset within the range [-spread_angle, +spread_angle]
+                spread_offset = math.radians(random.uniform(-self.gun.spread_angle, self.gun.spread_angle))
+                angle = base_angle + spread_offset
                 direction = (math.cos(angle), -math.sin(angle))
 
-                # Create a new projectile with direction
-                bullet = Projectile(self.gun_rect.center, direction, self.gun.bullet_image, self.gun.bullet_speed, self.gun.damage)
+                # Create a single projectile with random spread
+                bullet = Projectile(
+                    self.gun_rect.center, direction,
+                    self.gun.bullet_image, self.gun.bullet_speed,
+                    self.gun.damage, self.gun.bullet_duration,
+                    piercing=self.gun.piercing
+                )
                 bullets.append(bullet)
+            else:
+                # Calculate spread for multi-projectile weapons as usual
+                spread_radians = math.radians(self.gun.spread_angle)
+                start_angle = base_angle - spread_radians * (self.gun.projectile_count - 1) / 2
+
+                for i in range(self.gun.projectile_count):
+                    angle = start_angle + i * spread_radians
+                    direction = (math.cos(angle), -math.sin(angle))
+
+                    bullet = Projectile(
+                        self.gun_rect.center, direction,
+                        self.gun.bullet_image, self.gun.bullet_speed,
+                        self.gun.damage, self.gun.bullet_duration,
+                        piercing=self.gun.piercing
+                    )
+                    bullets.append(bullet)
 
             return bullets
         return None
@@ -318,22 +362,39 @@ class Player(pygame.sprite.Sprite):
     def get_level(self):
         return self.level
 
-# Define the Projectile class (moved outside of the Player class)
+
 class Projectile(pygame.sprite.Sprite):
-    def __init__(self, pos, direction, image_path, speed, damage):
+    def __init__(self, pos, direction, image_path, speed, damage, duration=2000, piercing=False):
         super().__init__()
-        self.image = pygame.image.load(image_path).convert_alpha()
+        self.original_image = pygame.image.load(image_path).convert_alpha()
+
+        # Calculate the angle in degrees based on direction vector
+        angle = math.degrees(math.atan2(-direction[1], direction[0]))
+
+        # Rotate the image to face the direction
+        self.image = pygame.transform.rotate(self.original_image, angle)
         self.rect = self.image.get_rect(center=pos)
+
         self.damage = damage
         self.velocity = (direction[0] * speed, direction[1] * speed)
+        self.piercing = piercing  # Set whether this projectile is piercing
+
+        # Duration handling
+        self.duration = duration  # Duration of projectile in milliseconds
+        self.spawn_time = pygame.time.get_ticks()  # Record the time the projectile was created
 
     def update(self):
+        # Move the projectile
         self.rect.x += self.velocity[0]
         self.rect.y += self.velocity[1]
 
-        # Remove bullet if it's off screen
+        # Check if the projectile is out of screen bounds
         if self.rect.right < 0 or self.rect.left > width or self.rect.bottom < 0 or self.rect.top > height:
             self.kill()
+
+        # Check if the duration has expired
+        if pygame.time.get_ticks() - self.spawn_time > self.duration:
+            self.kill()  # Remove projectile if duration has passed
 
 
 #Pickup Classes ------------------------------------------------
@@ -477,8 +538,20 @@ class Golem(Enemy):
 
 class FastFish(Enemy):
     def __init__(self):
-        super().__init__('Pictures/FastFish.png', speed=5, hp=5, damage=5, xp_reward=10)  # Set fast fish's damage to 5
+        super().__init__('Pictures/FastFish.png', speed=5, hp=5, damage=5, xp_reward=150)  # Set fast fish's damage to 5
         self.spawn_within_screen()
+
+class OrangeSlime(Enemy):
+    def __init__(self):
+        super().__init__('Pictures/OrangeSlime.png', speed=3, hp=150, damage=25, xp_reward=100)
+        self.spawn_within_screen()
+
+class ZapOrb(Enemy):
+    def __init__(self):
+        super().__init__('Pictures/ZapOrb.png', speed=2, hp=300, damage=50, xp_reward=200)
+        self.spawn_within_screen()
+
+
 
 # Enemy pool where each entry is a tuple of (level, EnemyClass)
 enemy_pool = [
@@ -486,6 +559,9 @@ enemy_pool = [
     (2, Slime),  # Add more enemy types for higher levels
     (4, BlueSlime),
     (5, Slime),
+    (7, OrangeSlime),
+    (8, BlueSlime),
+    (9, ZapOrb),
     (10, FastFish),
     # Add more enemy types for higher levels
 ]
@@ -610,8 +686,10 @@ def draw_timer(screen, time):
 
 
 # Create guns/weapons
-pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, fire_rate=400, bullet_speed=10, spread_angle=1, projectile_count=1, automatic_fire=False)
-katana = Gun("Katana", 'Pictures/Katana.png', 'Pictures/Slash.png', damage=5, fire_rate=250, bullet_speed=10, spread_angle=0, projectile_count=1, automatic_fire=True)
+pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, fire_rate=400, bullet_speed=10, spread_angle=1, projectile_count=1, automatic_fire=False, bullet_duration=2000, piercing=False)
+katana = Gun("Katana", 'Pictures/Katana.png', 'Pictures/Slash.png', damage=2, fire_rate=250, bullet_speed=10, spread_angle=20, projectile_count=1, automatic_fire=True, bullet_duration=100, piercing=True)
+shotgun = Gun("Shotgun", 'Pictures/Shotgun.png', 'Pictures/Bullet1.png', damage=4, fire_rate=1000, bullet_speed=10, spread_angle=10, projectile_count=5, automatic_fire=False, bullet_duration=2000, piercing=False)
+peashooter = Gun("Peashooter", 'Pictures/Peashooter.png', 'Pictures/Bullet2.png', damage=1, fire_rate=50, bullet_speed=10, spread_angle=5, projectile_count=1, automatic_fire=True, bullet_duration=2000, piercing=False)
 
 # Create the player instance with the pistol gun
 player = Player(640, 360, 'Pictures/Morp.png', pistol)
@@ -699,19 +777,49 @@ def title_screen():
                     return  # Exit the title screen loop and start the game
     # Start the title screen loop
 
+
+#Full screen checkbox funtion ------------------------------------------------
+
+class Fullscreen_Checkbox:
+    def __init__(self, x, y, size=20, checked=False):
+        self.rect = pygame.Rect(x, y, size, size)
+        self.checked = checked
+
+    def draw(self, screen):
+        # Draw the checkbox outline
+        pygame.draw.rect(screen, black, self.rect, 2)
+        # Fill the checkbox if it's checked
+        if self.checked:
+            pygame.draw.rect(screen, green, self.rect.inflate(-4, -4))
+
+    def handle_event(self, event):
+        # Toggle checked state on mouse click within checkbox area
+        if event.type == pygame.MOUSEBUTTONDOWN and self.rect.collidepoint(event.pos):
+            self.checked = not self.checked
+            return self.checked
+        return None
+
+
 #Pause menu function ------------------------------------------------
 
 # Initialize paused flag
 paused = False  # Game starts in running state
 
+# Initialize the fullscreen_mode as a global variable
+fullscreen_mode = False  # Track the fullscreen mode state globally
+
 # Define the pause menu function
 def pause_menu():
-    """Pause menu with a transparent background, title, resume, and quit buttons."""
+    """Pause menu with a transparent background, title, resume, and quit buttons, plus a fullscreen toggle checkbox."""
+    global fullscreen_mode  # Use the global variable to persist the state
     button_width = 150
     button_height = 40
     resume_button = pygame.Rect(width // 2 - button_width // 2, height // 2 - 70, button_width, button_height)
     titlescreen_button = pygame.Rect(width // 2 - button_width // 2, height // 2 - 10, button_width, button_height)
     quit_button = pygame.Rect(width // 2 - button_width // 2, height // 2 + 50, button_width, button_height)
+
+    # Initialize the checkbox with the current fullscreen state
+    checkbox = Fullscreen_Checkbox(width // 2 - 100, height // 2 + 120, size=20, checked=fullscreen_mode)
 
     # Create a semi-transparent surface for the frosted effect
     transparent_surface = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -764,6 +872,11 @@ def pause_menu():
         screen.blit(titlescreen_text, titlescreen_text_rect)
         screen.blit(quit_text, quit_text_rect)
 
+        # Draw checkbox with fullscreen label
+        checkbox.draw(screen)
+        fullscreen_text = font.render("Fullscreen Mode", True, black)
+        screen.blit(fullscreen_text, (checkbox.rect.right + 10, checkbox.rect.top))
+
         # Only one call to update the display
         pygame.display.flip()
 
@@ -781,10 +894,19 @@ def pause_menu():
                 if quit_button.collidepoint(event.pos):
                     pygame.quit()
                     sys.exit()
+
+            # Check for checkbox interaction and toggle fullscreen
+            checkbox_state = checkbox.handle_event(event)
+            if checkbox_state is not None:
+                fullscreen_mode = checkbox_state  # Update the global state
+                if fullscreen_mode:
+                    pygame.display.set_mode((width, height), pygame.FULLSCREEN)
+                else:
+                    pygame.display.set_mode((width, height))
+
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return False  # Resume the game if ESC is pressed
-
 
 # Upgrade Page function ------------------------------------------------
 
@@ -809,27 +931,32 @@ class Upgrade:
 
 
 # Upgrade effects
+# Upgrade effects
+def increase_damage(player):
+    player.base_damage += 5
+    player.apply_upgrades_to_gun()  # Update the equipped weapon
+
+# This will increase the player's movement speed by 1
 def increase_speed(player):
     player.speed += 1
 
-def increase_damage(player):
-    player.gun.damage += 5
+# This will improve the fire rate of the gun (reduce time between shots)
+def increase_attackSpeed(player):
+    player.base_fire_rate += 50  # Modify base fire rate directly
+    player.apply_upgrades_to_gun()  # Apply upgrade to the equipped gun's fire rate
 
+# Increase health and max health
 def increase_health(player):
-    player.max_hp += 20  # Increase max HP
-    player.hp = min(player.hp + 20, player.max_hp)  # Heal the player, but do not exceed max HP
+    player.max_hp += 20
+    player.hp = min(player.hp + 20, player.max_hp)  # Increase HP up to the new max
 
 bunger_spawn_count = 0  # Initialize the counter for Bunger Rain upgrade
-
 
 def enable_bunger_spawn(player):
     global bungerSpawn, bunger_spawn_count
     bungerSpawn = True
     bunger_spawn_count += 1  # Increase the count each time the upgrade is selected
     print(f"Bunger Rain upgrade activated! Bungers will spawn at level {bunger_spawn_count}.")
-
-def increase_attackSpeed(player):
-    player.gun.fire_rate -= 50
 
 lollipop_spawn_count = 0  # Initialize the counter for Lollipop Rain upgrade
 
@@ -839,8 +966,25 @@ def enable_lollipop_spawn(player):
     lollipop_spawn_count += 1
     print(f"Lollipop Rain upgrade activated! Lollipops will spawn at level {lollipop_spawn_count}.")
 
+# Function to swap the player's weapon to Katana
+def swap_to_katana(player):
+    player.equip_gun(katana)
+    print("Player swapped to Katana!")
 
-# Add the Bunger upgrade to the upgrades pool
+def swap_to_pistol(player):
+    player.equip_gun(pistol)
+    print("Player swapped to Pistol!")
+
+def swap_to_shotgun(player):
+    player.equip_gun(shotgun)
+    print("Player swapped to Shotgun!")
+
+def swap_to_peashooter(player):
+    player.equip_gun(peashooter)
+    print("Player swapped to Peashooter!")
+
+
+# Upgrade Pool
 upgrades_pool = [
     Upgrade("Speed Boost", "Increases player's speed by 1.", increase_speed, 'Pictures/Boot.png'),
     Upgrade("Damage Boost", "Increases gun damage by 5.", increase_damage, 'Pictures/DamagePlus.png'),
@@ -848,12 +992,16 @@ upgrades_pool = [
     Upgrade("Bunger Rain", "Bungers will start raining down!", enable_bunger_spawn, 'Pictures/Bunger.png'),
     Upgrade("Attack Speed", "Increases attack speed by 50.", increase_attackSpeed, 'Pictures/AttackSpeed.png'),
     Upgrade("Lollipop Rain", "Lollipops will start raining down!", enable_lollipop_spawn, 'Pictures/Lollipop.png'),
+    Upgrade("Katana", "Swap to the Katana weapon!", swap_to_katana, 'Pictures/Katana.png'),
+    Upgrade("Pistol", "WHY???", swap_to_pistol, 'Pictures/Pistol.png'),
+    Upgrade("Shotgun", "Gun that goes Boom!", swap_to_shotgun, 'Pictures/Shotgun.png'),
+    Upgrade("Peashooter", "Gun that goes Pew rapidly!", swap_to_peashooter, 'Pictures/Peashooter.png'),
 ]
 
 
 # Function to select random upgrades from the pool
 import random
-def select_random_upgrades(upgrades_pool, count=3):
+def select_random_upgrades(upgrades_pool, count=4):
     return random.sample(upgrades_pool, min(count, len(upgrades_pool)))
 
 
@@ -861,7 +1009,7 @@ def Upgrade_Page(player):
     """Upgrade page that appears on leveling up."""
     button_width = 200
     button_height = 40
-    selected_upgrades = select_random_upgrades(upgrades_pool, 3)
+    selected_upgrades = select_random_upgrades(upgrades_pool, 4)  # Shows up to 4 upgrade options
     logo_size = (64, 64)  # Size of the logos
 
     # Create a semi-transparent surface for the frosted effect
@@ -922,8 +1070,8 @@ def Upgrade_Page(player):
             if event.type == pygame.MOUSEBUTTONDOWN:
                 for button_rect, upgrade in upgrade_buttons:
                     if button_rect.collidepoint(event.pos):
-                        upgrade.apply(player)
-                        return  # Exit the upgrade page after selecting an upgrade
+                        upgrade.apply(player)  # Apply the selected upgrade
+                        return  # Exit the upgrade page after selection
 
 
 
@@ -931,8 +1079,7 @@ def Upgrade_Page(player):
 def reset_game():
     """Reset the game state to its initial configuration."""
     global player, all_sprites, bullets, Pickup, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
-    global bungerSpawn, bunger_spawn_count  # Include global variables related to upgrades
-    global lollipopSpawn, lollipop_spawn_count # Include global variables related to upgrades
+    global bungerSpawn, bunger_spawn_count, lollipopSpawn, lollipop_spawn_count  # Include global upgrade-related variables
 
     # Clear all sprite groups to ensure no lingering objects
     all_sprites.empty()
@@ -941,18 +1088,21 @@ def reset_game():
     enemies.empty()
     obstacles.empty()
 
-    # Reset global variables related to upgrades
+    # Reset global upgrade flags and counters
     bungerSpawn = False
     bunger_spawn_count = 0
+    lollipopSpawn = False
     lollipop_spawn_count = 0
 
-    # Recreate the player instance with the pistol gun and reset HP and inventory
+    # Recreate the player instance with default attributes and upgrades reset
     player = Player(640, 360, 'Pictures/Morp.png', pistol)
-    player.inventory = {}  # Reset the inventory
-    player.speed = 3       # Reset player speed
-    player.max_hp = 100    # Reset player max HP
-    player.hp = 100        # Reset player HP to max HP
-    player.gun.damage = 5  # Reset player gun damage to its initial value
+    player.inventory = {}       # Reset the inventory
+    player.speed = 3            # Reset player speed
+    player.max_hp = 100         # Reset player max HP
+    player.hp = 100             # Reset player HP to max HP
+    player.base_damage = 0      # Reset base damage
+    player.base_fire_rate = 0   # Reset base fire rate
+    player.apply_upgrades_to_gun()  # Ensure gun is reset with no upgrades
 
     all_sprites.add(player)  # Add player to the all_sprites group
 
@@ -970,6 +1120,7 @@ def reset_game():
     # Reset paused and player dead states
     paused = False  # Reset paused state when the game is restarted
     player_dead = False  # Reset player dead status
+
 
 
 #Death Game Over function ------------------------------------------------
@@ -1216,7 +1367,10 @@ while running:
                 enemy_hit_list = pygame.sprite.spritecollide(bullet, enemies, False)
                 for enemy in enemy_hit_list:
                     enemy.enemy_take_damage(bullet.damage, player)  # Pass the player to award XP on enemy death
-                    bullet.kill()  # Remove the bullet once it hits an enemy
+
+                    # Only kill the bullet if it's not piercing
+                    if not bullet.piercing:
+                        bullet.kill()  # Remove the bullet once it hits an enemy if it's not piercing
 
         # Draw the game state
         draw_GameUI()
