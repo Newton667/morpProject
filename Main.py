@@ -109,6 +109,10 @@ class Player(pygame.sprite.Sprite):
         # Apply upgrades initially
         self.apply_upgrades_to_gun()
 
+        # Miniaturization attributes
+        self.is_miniaturized = False  # Flag to track miniaturization
+        self.miniaturization_scale = 1  # Start with normal scale
+
     def equip_gun(self, gun):
         """Equip a new gun and apply player upgrades to it."""
         self.gun = gun
@@ -116,6 +120,10 @@ class Player(pygame.sprite.Sprite):
         self.gun_base_damage = self.gun.damage
         self.gun_base_fire_rate = self.gun.fire_rate
         self.apply_upgrades_to_gun()  # Apply any base upgrades to the new gun
+        if self.is_miniaturized:
+            self.image = pygame.transform.scale(self.image, (int(self.rect.width * self.miniaturization_scale), int(self.rect.height * self.miniaturization_scale)))
+            self.original_image = self.image.copy()
+            self.rect = self.image.get_rect(center=self.rect.center)
 
     def apply_upgrades_to_gun(self):
         """Apply player upgrades to the equipped gun based on stored base values."""
@@ -242,6 +250,8 @@ class Player(pygame.sprite.Sprite):
             if level <= self.level:
                 # Create a new enemy of the specified class and add it to the groups
                 new_enemy = EnemyClass()
+                if self.is_miniaturized:
+                    apply_miniaturization(new_enemy, self.miniaturization_scale)
                 enemies.add(new_enemy)
                 all_sprites.add(new_enemy)
 
@@ -251,6 +261,8 @@ class Player(pygame.sprite.Sprite):
         for level, BossClass in enemyBoss_pool:
             if level <= self.level:  # Spawn bosses at or after the required level
                 new_boss = BossClass()
+                if self.is_miniaturized:
+                    apply_miniaturization(new_boss, self.miniaturization_scale)
                 enemies.add(new_boss)
                 all_sprites.add(new_boss)
                 print(f"Boss {new_boss.__class__.__name__} spawned!")  # Debugging print
@@ -383,6 +395,11 @@ class Projectile(pygame.sprite.Sprite):
         self.duration = duration  # Duration of projectile in milliseconds
         self.spawn_time = pygame.time.get_ticks()  # Record the time the projectile was created
 
+        if player.is_miniaturized:
+            scale_factor = player.miniaturization_scale
+            self.image = pygame.transform.scale(self.image, (int(self.rect.width * scale_factor), int(self.rect.height * scale_factor)))
+            self.rect = self.image.get_rect(center=self.rect.center)
+
     def update(self):
         # Move the projectile
         self.rect.x += self.velocity[0]
@@ -395,6 +412,7 @@ class Projectile(pygame.sprite.Sprite):
         # Check if the duration has expired
         if pygame.time.get_ticks() - self.spawn_time > self.duration:
             self.kill()  # Remove projectile if duration has passed
+
 
 
 #Pickup Classes ------------------------------------------------
@@ -457,6 +475,12 @@ class Enemy(pygame.sprite.Sprite):
         self.is_blinking = False
         self.blink_duration = 300  # Blink duration in milliseconds
         self.blink_start_time = 0
+
+        if player.is_miniaturized:  # Check if the player activated the miniaturization upgrade
+            scale_factor = player.miniaturization_scale
+            self.image = pygame.transform.scale(self.image, (int(self.rect.width * scale_factor), int(self.rect.height * scale_factor)))
+            self.original_image = self.image.copy()  # Update for blinking effect
+            self.rect = self.image.get_rect(center=self.rect.center)
 
     def spawn_within_screen(self):
         """Spawn enemy at a random position within the screen."""
@@ -597,8 +621,11 @@ def spawn_random_enemies(player):
     for EnemyClass, count in enemies_to_spawn.items():
         for _ in range(count):
             new_enemy = EnemyClass()
+            if player.is_miniaturized:
+                apply_miniaturization(new_enemy, player.miniaturization_scale)
             enemies.add(new_enemy)
             all_sprites.add(new_enemy)
+
 
 def spawn_boss_enemies(player):
     """Spawn boss enemies based on the player's level and the boss enemy pool."""
@@ -609,7 +636,7 @@ def spawn_boss_enemies(player):
 
     # Determine which bosses to spawn based on the player's current level
     for level, BossClass in enemyBoss_pool:
-        if player.level >= level:  # Adjust to spawn based on level thresholds
+        if player.level >= level:
             if BossClass in bosses_to_spawn:
                 bosses_to_spawn[BossClass] += 1
             else:
@@ -618,12 +645,12 @@ def spawn_boss_enemies(player):
     # Spawn the bosses according to the count in bosses_to_spawn
     for BossClass, count in bosses_to_spawn.items():
         for _ in range(count):
-            new_boss = BossClass()  # Correctly instantiate the boss
-            enemies.add(new_boss)  # Add the instance to enemies group
-            all_sprites.add(new_boss)  # Also add to all_sprites
+            new_boss = BossClass()
+            if player.is_miniaturized:
+                apply_miniaturization(new_boss, player.miniaturization_scale)
+            enemies.add(new_boss)
+            all_sprites.add(new_boss)
             print(f"Boss {new_boss.__class__.__name__} spawned!")  # Debugging print
-
-
 
 
 
@@ -663,16 +690,24 @@ def draw_xp_bar(screen, player):
 
 # Function to draw the HP bar and HP text
 def draw_HP_bar(screen, player):
-    bar_width = 12.3
+    # Set bar width as an integer to avoid mismatch
+    bar_width = 150  # Adjust this to the desired length for the HP bar
     bar_height = 15
     bar_x = 15
     bar_y = 70
-    fill_width = int(bar_width * (player.get_hp() / player.max_hp * bar_width))  # Adjust fill width based on max_hp
-    pygame.draw.rect(screen, gray, (bar_x, bar_y, bar_width, bar_height))
-    pygame.draw.rect(screen, red, (bar_x, bar_y, fill_width, bar_height))
+
+    # Calculate the fill width based on current HP
+    fill_width = int(bar_width * (player.get_hp() / player.max_hp))
+
+    # Draw the background (gray) and the filled (red) parts of the HP bar
+    pygame.draw.rect(screen, gray, (bar_x, bar_y, bar_width, bar_height))  # Full gray background
+    pygame.draw.rect(screen, red, (bar_x, bar_y, fill_width, bar_height))  # Filled red part based on HP
+
+    # Draw HP text
     font = pygame.font.Font(None, 25)
     text = font.render(f'HP: {player.hp}/{player.max_hp}', True, black)
     screen.blit(text, (bar_x, bar_y + bar_height + 5))
+
 
 # Draw timer
 def draw_timer(screen, time):
@@ -931,7 +966,6 @@ class Upgrade:
 
 
 # Upgrade effects
-# Upgrade effects
 def increase_damage(player):
     player.base_damage += 5
     player.apply_upgrades_to_gun()  # Update the equipped weapon
@@ -966,6 +1000,51 @@ def enable_lollipop_spawn(player):
     lollipop_spawn_count += 1
     print(f"Lollipop Rain upgrade activated! Lollipops will spawn at level {lollipop_spawn_count}.")
 
+# Define the miniaturization effect function
+def miniaturize_entities(player):
+    """Shrink player, enemies, and projectiles by 10% consistently."""
+    scale_factor = 0.9  # 90% of original size
+
+    # Miniaturize the player
+    player.image = pygame.transform.scale(player.image, (int(player.rect.width * scale_factor), int(player.rect.height * scale_factor)))
+    player.original_image = player.image.copy()  # Update original image for blinking effect
+    player.rect = player.image.get_rect(center=player.rect.center)  # Reposition rect after scaling
+
+    # Set a flag to indicate that miniaturization is active
+    player.is_miniaturized = True
+    player.miniaturization_scale = scale_factor
+
+    # Miniaturize all existing enemies
+    for enemy in enemies:
+        apply_miniaturization(enemy, scale_factor)
+
+    # Miniaturize all current projectiles
+    for bullet in bullets:
+        apply_shrink_to_bullet(bullet, scale_factor)
+
+    # Miniaturize the gun
+    apply_gun_miniaturization(player, scale_factor)
+
+    print("Miniaturization upgrade applied: all entities scaled down by 10%.")
+
+def apply_miniaturization(enemy, scale_factor):
+    """Shrink an enemy's image and rect by a given scale factor."""
+    enemy.image = pygame.transform.scale(enemy.image, (int(enemy.rect.width * scale_factor), int(enemy.rect.height * scale_factor)))
+    enemy.original_image = enemy.image.copy()  # Update original image for blinking effect
+    enemy.rect = enemy.image.get_rect(center=enemy.rect.center)  # Center the rect after scaling
+
+def apply_shrink_to_bullet(bullet, scale_factor):
+    """Apply shrink effect to an individual bullet."""
+    bullet.image = pygame.transform.scale(bullet.image, (int(bullet.rect.width * scale_factor), int(bullet.rect.height * scale_factor)))
+    bullet.rect = bullet.image.get_rect(center=bullet.rect.center)
+
+def apply_gun_miniaturization(player, scale_factor):
+    """Shrink the player's gun image and adjust position."""
+    player.gun_image = pygame.transform.scale(player.gun_image, (int(player.gun_rect.width * scale_factor), int(player.gun_rect.height * scale_factor)))
+    player.gun_rect = player.gun_image.get_rect(center=player.gun_rect.center)
+    player.gun_distance_from_player *= scale_factor  # Adjust the gun distance
+
+
 # Function to swap the player's weapon to Katana
 def swap_to_katana(player):
     player.equip_gun(katana)
@@ -996,6 +1075,7 @@ upgrades_pool = [
     Upgrade("Pistol", "WHY???", swap_to_pistol, 'Pictures/Pistol.png'),
     Upgrade("Shotgun", "Gun that goes Boom!", swap_to_shotgun, 'Pictures/Shotgun.png'),
     Upgrade("Peashooter", "Gun that goes Pew rapidly!", swap_to_peashooter, 'Pictures/Peashooter.png'),
+    Upgrade("Miniaturization", "Shrink everything by 10%.", miniaturize_entities, 'Pictures/SizeShrink.png')
 ]
 
 
@@ -1102,6 +1182,11 @@ def reset_game():
     player.hp = 100             # Reset player HP to max HP
     player.base_damage = 0      # Reset base damage
     player.base_fire_rate = 0   # Reset base fire rate
+
+    # Reset gun's base damage and fire rate to the default weapon values
+    player.gun_base_damage = pistol.damage  # Use the initial gun's damage as the base value
+    player.gun.damage = player.gun_base_damage
+    player.gun.fire_rate = player.gun_base_fire_rate
     player.apply_upgrades_to_gun()  # Ensure gun is reset with no upgrades
 
     all_sprites.add(player)  # Add player to the all_sprites group
@@ -1120,6 +1205,7 @@ def reset_game():
     # Reset paused and player dead states
     paused = False  # Reset paused state when the game is restarted
     player_dead = False  # Reset player dead status
+
 
 
 
