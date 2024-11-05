@@ -757,6 +757,13 @@ pygame.time.set_timer(bunger_spawn_event, 15000)
 lollipop_spawn_event = pygame.USEREVENT + 5
 pygame.time.set_timer(lollipop_spawn_event, 10000)
 
+# Set up a timer for bandage healing every 10 seconds
+bandage_heal_event = pygame.USEREVENT + 6  # Unique event ID for bandage healing
+pygame.time.set_timer(bandage_heal_event, 10000)  # Trigger every 10 seconds
+
+# Set up a timer for healing needle every 1 seconds
+healing_needle_event = pygame.USEREVENT + 7  # Unique event ID for healing needle
+pygame.time.set_timer(healing_needle_event, 1000)  # Trigger every 1 seconds
 
 # Create a group for obstacles (currently empty, but you can add obstacles here)
 obstacles = pygame.sprite.Group()
@@ -1000,6 +1007,25 @@ def enable_lollipop_spawn(player):
     lollipop_spawn_count += 1
     print(f"Lollipop Rain upgrade activated! Lollipops will spawn at level {lollipop_spawn_count}.")
 
+# Add a global variable to track bandage upgrades
+bandage_count = 0  # Initialize the count of Bandage upgrades
+
+# Define the Bandage upgrade effect
+def apply_bandage(player):
+    global bandage_count
+    bandage_count += 1  # Increment the count of Bandage upgrades
+    print(f"Bandage upgrade applied! Healing 10 HP every 10 seconds. Current Bandages: {bandage_count}")
+
+# Add a global variable to track healing needle upgrade
+needle_count = 0
+
+# Define the Healing Needle upgrade effect
+def apply_healing_needle(player):
+    global needle_count
+    needle_count += 1
+    print(f"Healing Needle upgrade applied! Healing 50 HP instantly. Current Needles: {needle_count}")
+
+
 # Define the miniaturization effect function
 def miniaturize_entities(player):
     """Shrink player, enemies, and projectiles by 10% consistently."""
@@ -1075,7 +1101,9 @@ upgrades_pool = [
     Upgrade("Pistol", "WHY???", swap_to_pistol, 'Pictures/Pistol.png'),
     Upgrade("Shotgun", "Gun that goes Boom!", swap_to_shotgun, 'Pictures/Shotgun.png'),
     Upgrade("Peashooter", "Gun that goes Pew rapidly!", swap_to_peashooter, 'Pictures/Peashooter.png'),
-    Upgrade("Miniaturization", "Shrink everything by 10%.", miniaturize_entities, 'Pictures/SizeShrink.png')
+    Upgrade("Miniaturization", "Shrink everything by 10%.", miniaturize_entities, 'Pictures/SizeShrink.png'),
+    Upgrade("Bandage", "Heals 10 HP every 10 seconds. Stacks with each upgrade.", apply_bandage, 'Pictures/Bandage.png'),
+    Upgrade("Healing Needle", "Heals 1 HP every 1 second. Stacks with each upgrade.", apply_healing_needle, 'Pictures/Needle.png'),
 ]
 
 
@@ -1159,7 +1187,7 @@ def Upgrade_Page(player):
 def reset_game():
     """Reset the game state to its initial configuration."""
     global player, all_sprites, bullets, Pickup, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
-    global bungerSpawn, bunger_spawn_count, lollipopSpawn, lollipop_spawn_count  # Include global upgrade-related variables
+    global bungerSpawn, bunger_spawn_count, lollipopSpawn, lollipop_spawn_count, bandage_count  # Include global upgrade-related variables
 
     # Clear all sprite groups to ensure no lingering objects
     all_sprites.empty()
@@ -1173,6 +1201,8 @@ def reset_game():
     bunger_spawn_count = 0
     lollipopSpawn = False
     lollipop_spawn_count = 0
+    bandage_count = 0
+    needle_count = 0
 
     # Recreate the player instance with default attributes and upgrades reset
     player = Player(640, 360, 'Pictures/Morp.png', pistol)
@@ -1205,8 +1235,6 @@ def reset_game():
     # Reset paused and player dead states
     paused = False  # Reset paused state when the game is restarted
     player_dead = False  # Reset player dead status
-
-
 
 
 #Death Game Over function ------------------------------------------------
@@ -1384,6 +1412,18 @@ while running:
                 Lollipop = Candy('Pictures/Lollipop.png')
                 Pickup.add(Lollipop)
                 all_sprites.add(Lollipop)
+
+        # Handle bandage healing event
+        if event.type == bandage_heal_event and bandage_count > 0:
+            heal_amount = 10 * bandage_count  # Heal amount scales with bandage count
+            player.gain_HP(heal_amount)  # Heal the player
+            print(f"Bandage healed {heal_amount} HP. Current HP: {player.hp}")
+
+        # Handle healing needle event
+        if event.type == healing_needle_event and needle_count > 0:
+            heal_amount = 1 * needle_count
+            player.gain_HP(heal_amount)
+            print(f"Healing needle healed {heal_amount} HP. Current HP: {player.hp}")
 
         # Inside the main game loop:
         if event.type == Enemy_Spawn_Timer and not player_dead:
