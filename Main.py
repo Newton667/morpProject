@@ -783,6 +783,9 @@ pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, 
 katana = Gun("Katana", 'Pictures/Katana.png', 'Pictures/Slash.png', damage=2, fire_rate=250, bullet_speed=10, spread_angle=20, projectile_count=1, automatic_fire=True, bullet_duration=100, piercing=True)
 shotgun = Gun("Shotgun", 'Pictures/Shotgun.png', 'Pictures/Bullet1.png', damage=4, fire_rate=1000, bullet_speed=10, spread_angle=10, projectile_count=5, automatic_fire=False, bullet_duration=2000, piercing=False)
 peashooter = Gun("Peashooter", 'Pictures/Peashooter.png', 'Pictures/Bullet2.png', damage=1, fire_rate=50, bullet_speed=10, spread_angle=5, projectile_count=1, automatic_fire=True, bullet_duration=2000, piercing=False)
+voidbook = Gun("Voidbook", 'Pictures/VoidBook.png', 'Pictures/VoidOrb.png', damage=1, fire_rate=2000,
+               bullet_speed=1.5, spread_angle=1, projectile_count=1, automatic_fire=False, bullet_duration=3000,
+               piercing=True)
 
 # Create the player instance with the pistol gun
 player = Player(640, 360, 'Pictures/Morp.png', pistol)
@@ -1167,6 +1170,10 @@ def swap_to_peashooter(player):
     player.equip_gun(peashooter)
     print("Player swapped to Peashooter!")
 
+def swap_to_voidbook(player):
+    player.equip_gun(voidbook)
+    print("Player swapped to Voidbook!")
+
 
 # Upgrade Pool
 upgrades_pool = [
@@ -1183,6 +1190,7 @@ upgrades_pool = [
     Upgrade("Miniaturization", "Shrink everything by 10%.", miniaturize_entities, 'Pictures/SizeShrink.png'),
     Upgrade("Bandage", "Heals 10 HP every 10 seconds. Stacks with each upgrade.", apply_bandage, 'Pictures/Bandage.png'),
     Upgrade("Healing Needle", "Heals 1 HP every 1 second. Stacks with each upgrade.", apply_healing_needle, 'Pictures/Needle.png'),
+    Upgrade("Voidbook", "Swap to the Voidbook weapon!", swap_to_voidbook, 'Pictures/VoidBook.png'),
 ]
 
 
@@ -1267,7 +1275,7 @@ def reset_game():
     """Reset the game state to its initial configuration."""
     global player, all_sprites, bullets, Pickup, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
     global bungerSpawn, bunger_spawn_count, lollipopSpawn, lollipop_spawn_count, bandage_count
-    global pistol, katana, shotgun, peashooter  # Include global gun instances
+    global pistol, katana, shotgun, peashooter, voidbook  # Include global gun instances
 
     # Clear all sprite groups to ensure no lingering objects
     all_sprites.empty()
@@ -1297,6 +1305,9 @@ def reset_game():
     peashooter = Gun("Peashooter", 'Pictures/Peashooter.png', 'Pictures/Bullet2.png', damage=1, fire_rate=50,
                      bullet_speed=10, spread_angle=5, projectile_count=1, automatic_fire=True,
                      bullet_duration=2000, piercing=False)
+    voidbook = Gun("Voidbook", 'Pictures/VoidBook.png', 'Pictures/VoidOrb.png', damage=1, fire_rate=2000,
+                   bullet_speed=1.5, spread_angle=1, projectile_count=1, automatic_fire=False, bullet_duration=3000,
+                   piercing=True)
 
     # Recreate the player instance with default attributes and upgrades reset
     player = Player(640, 360, 'Pictures/Morp.png', pistol)
