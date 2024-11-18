@@ -34,7 +34,8 @@ sky_blue = (135, 206, 235)
 class Gun:
     def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed, spread_angle=0, projectile_count=1, automatic_fire=False, bullet_duration=2000, piercing=False):
         self.name = name
-        self.image = pygame.image.load(image_path).convert_alpha()
+        self.original_image = pygame.image.load(image_path).convert_alpha()
+        self.image = self.original_image.copy()
         self.bullet_image = bullet_image
         self.damage = damage
         self.fire_rate = fire_rate  # Cooldown between shots in milliseconds
@@ -111,19 +112,26 @@ class Player(pygame.sprite.Sprite):
 
         # Miniaturization attributes
         self.is_miniaturized = False  # Flag to track miniaturization
-        self.miniaturization_scale = 1  # Start with normal scale
+        self.cumulative_scale = 1.0  # Start with normal scale
 
     def equip_gun(self, gun):
         """Equip a new gun and apply player upgrades to it."""
         self.gun = gun
+        self.gun_image = self.gun.image.copy()
+        self.gun_rect = self.gun_image.get_rect()
+
         # Reset base attributes when equipping a new gun
         self.gun_base_damage = self.gun.damage
         self.gun_base_fire_rate = self.gun.fire_rate
         self.apply_upgrades_to_gun()  # Apply any base upgrades to the new gun
+
+        # Apply miniaturization to the new gun if the player is miniaturized
         if self.is_miniaturized:
-            self.image = pygame.transform.scale(self.image, (int(self.rect.width * self.miniaturization_scale), int(self.rect.height * self.miniaturization_scale)))
-            self.original_image = self.image.copy()
-            self.rect = self.image.get_rect(center=self.rect.center)
+            # Scale the gun image
+            new_width = int(self.gun.original_image.get_width() * self.cumulative_scale)
+            new_height = int(self.gun.original_image.get_height() * self.cumulative_scale)
+            self.gun_image = pygame.transform.scale(self.gun.original_image, (new_width, new_height))
+            self.gun_rect = self.gun_image.get_rect(center=self.gun_rect.center)
 
     def apply_upgrades_to_gun(self):
         """Apply player upgrades to the equipped gun based on stored base values."""
@@ -245,27 +253,20 @@ class Player(pygame.sprite.Sprite):
 
     def spawn_enemies_based_on_level(self):
         global enemies, all_sprites
-        # Go through the enemy pool and add the appropriate regular enemies for the current level
         for level, EnemyClass in enemy_pool:
             if level <= self.level:
-                # Create a new enemy of the specified class and add it to the groups
-                new_enemy = EnemyClass()
-                if self.is_miniaturized:
-                    apply_miniaturization(new_enemy, self.miniaturization_scale)
+                new_enemy = EnemyClass(cumulative_scale=self.cumulative_scale)
                 enemies.add(new_enemy)
                 all_sprites.add(new_enemy)
 
     def spawn_boss_based_on_level(self):
         global enemies, all_sprites
-        # Ensure that bosses can spawn if the level is greater than or equal to the boss's level requirement
         for level, BossClass in enemyBoss_pool:
-            if level <= self.level:  # Spawn bosses at or after the required level
-                new_boss = BossClass()
-                if self.is_miniaturized:
-                    apply_miniaturization(new_boss, self.miniaturization_scale)
+            if level <= self.level:
+                new_boss = BossClass(cumulative_scale=self.cumulative_scale)
                 enemies.add(new_boss)
                 all_sprites.add(new_boss)
-                print(f"Boss {new_boss.__class__.__name__} spawned!")  # Debugging print
+                print(f"Boss {new_boss.__class__.__name__} spawned!")
 
     def check_window_collision(self, screen_width, screen_height):
         if self.rect.left < 0:
@@ -294,7 +295,7 @@ class Player(pygame.sprite.Sprite):
         gun_y = player_center[1] - self.gun_distance_from_player * math.sin(rad_angle) - self.gun_rect.height // 100
 
         # Rotate the gun based on the angle
-        rotated_gun_image = pygame.transform.rotate(self.gun.image, angle)
+        rotated_gun_image = pygame.transform.rotate(self.gun_image, angle)  # Use self.gun_image
 
         # Check if the gun should be flipped horizontally based on the angle
         if 90 < angle < 270:
@@ -339,7 +340,8 @@ class Player(pygame.sprite.Sprite):
                     self.gun_rect.center, direction,
                     self.gun.bullet_image, self.gun.bullet_speed,
                     self.gun.damage, self.gun.bullet_duration,
-                    piercing=self.gun.piercing
+                    piercing=self.gun.piercing,
+                    cumulative_scale=self.cumulative_scale
                 )
                 bullets.append(bullet)
             else:
@@ -376,7 +378,7 @@ class Player(pygame.sprite.Sprite):
 
 
 class Projectile(pygame.sprite.Sprite):
-    def __init__(self, pos, direction, image_path, speed, damage, duration=2000, piercing=False):
+    def __init__(self, pos, direction, image_path, speed, damage, duration=2000, piercing=False, cumulative_scale=1.0):
         super().__init__()
         self.original_image = pygame.image.load(image_path).convert_alpha()
 
@@ -395,10 +397,31 @@ class Projectile(pygame.sprite.Sprite):
         self.duration = duration  # Duration of projectile in milliseconds
         self.spawn_time = pygame.time.get_ticks()  # Record the time the projectile was created
 
-        if player.is_miniaturized:
-            scale_factor = player.miniaturization_scale
-            self.image = pygame.transform.scale(self.image, (int(self.rect.width * scale_factor), int(self.rect.height * scale_factor)))
-            self.rect = self.image.get_rect(center=self.rect.center)
+        # Initialize cumulative scaling
+        self.cumulative_scale = 1.0  # Start with no scaling
+
+        # Rotate the original image based on direction
+        angle = math.degrees(math.atan2(-direction[1], direction[0]))
+        self.image = pygame.transform.rotate(self.original_image, angle)
+
+        # Apply cumulative scaling if necessary
+        if cumulative_scale != 1.0:
+            self.apply_miniaturization(cumulative_scale)
+
+        self.rect = self.image.get_rect(center=pos)
+
+    def apply_miniaturization(self, scale_factor):
+        """Shrink the projectile's image and rect by a cumulative scale factor."""
+        self.cumulative_scale *= scale_factor
+        # Scale the original image
+        new_width = int(self.original_image.get_width() * self.cumulative_scale)
+        new_height = int(self.original_image.get_height() * self.cumulative_scale)
+        scaled_image = pygame.transform.scale(self.original_image, (new_width, new_height))
+        # Rotate the scaled image
+        angle = math.degrees(math.atan2(-self.velocity[1], self.velocity[0]))
+        self.image = pygame.transform.rotate(scaled_image, angle)
+        # Update the rect
+        self.rect = self.image.get_rect(center=self.rect.center)
 
     def update(self):
         # Move the projectile
@@ -458,29 +481,31 @@ class Lollipop(pygame.sprite.Sprite):
 #Enemy Class
 # Define the Enemy base class
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, image_path, speed, hp, damage, xp_reward):
+    def __init__(self, image_path, speed, hp, damage, xp_reward, cumulative_scale=1.0):
         super().__init__()
-        self.image = pygame.image.load(image_path).convert_alpha()
-        self.original_image = self.image.copy()  # Store the original image for resetting after blinking
-        self.rect = self.image.get_rect()
+        self.original_image = pygame.image.load(image_path).convert_alpha()
+        self.cumulative_scale = cumulative_scale
+        self.direction = 'right'  # Initialize enemy facing right
 
         # Enemy attributes
         self.hp = hp
         self.speed = speed
-        self.damage = damage  # New damage attribute
-        self.xp_reward = xp_reward  # XP awarded when enemy is killed
-        self.direction = 'right'  # Initialize enemy facing right
+        self.damage = damage
+        self.xp_reward = xp_reward
 
         # Damage blinking attributes
         self.is_blinking = False
-        self.blink_duration = 300  # Blink duration in milliseconds
+        self.blink_duration = 500  # Increase to 500 milliseconds
         self.blink_start_time = 0
 
-        if player.is_miniaturized:  # Check if the player activated the miniaturization upgrade
-            scale_factor = player.miniaturization_scale
-            self.image = pygame.transform.scale(self.image, (int(self.rect.width * scale_factor), int(self.rect.height * scale_factor)))
-            self.original_image = self.image.copy()  # Update for blinking effect
-            self.rect = self.image.get_rect(center=self.rect.center)
+        # Initialize image and rect
+        self.image = self.original_image
+        self.rect = self.image.get_rect()  # Define self.rect here
+        self.update_scaled_image()
+
+        # Set initial position (e.g., spawn within the screen)
+        self.spawn_within_screen()
+
 
     def spawn_within_screen(self):
         """Spawn enemy at a random position within the screen."""
@@ -488,20 +513,20 @@ class Enemy(pygame.sprite.Sprite):
         self.rect.y = random.randint(0, height - self.rect.height)
 
     def move_towards_player(self, player):
-        """Moves the enemy towards the player."""
+        """Moves the enemy towards the player while preserving scale and flipping based on direction."""
         direction_x = player.rect.x - self.rect.x
         direction_y = player.rect.y - self.rect.y
         distance = math.hypot(direction_x, direction_y)
 
-        # Flip the enemy based on its direction relative to the player
-        if direction_x < 0 and self.direction != 'left':  # Moving left
-            self.image = pygame.transform.flip(self.original_image, True, False)
+        # Flip based on movement direction and update the image accordingly
+        if direction_x < 0 and self.direction != 'left':
             self.direction = 'left'
-        elif direction_x > 0 and self.direction != 'right':  # Moving right
-            self.image = self.original_image  # Restore original image
+            self.update_scaled_image()  # Update the image to reflect the direction change
+        elif direction_x > 0 and self.direction != 'right':
             self.direction = 'right'
+            self.update_scaled_image()
 
-        if distance > 0:  # Normalize direction
+        if distance > 0:
             direction_x /= distance
             direction_y /= distance
 
@@ -510,69 +535,91 @@ class Enemy(pygame.sprite.Sprite):
         self.rect.y += int(direction_y * self.speed)
 
     def enemy_take_damage(self, damage, player):
-        """Handles damage and triggers blinking effect."""
+        """Handles damage and triggers blinking effect without resetting size."""
         self.hp -= damage
         print(f"{self.__class__.__name__} took {damage} damage. Current HP: {self.hp}")
 
-        # Trigger the blinking effect
+        # Trigger the blinking effect without altering the size
         self.is_blinking = True
         self.blink_start_time = pygame.time.get_ticks()
 
-        # Tint red manually by setting a solid color
-        red_tinted_image = self.original_image.copy()
-        red_tinted_image.fill((255, 0, 0), special_flags=pygame.BLEND_ADD)  # Tint red with BLEND_ADD
-        self.image = red_tinted_image
+        # Reapply the image with the current cumulative scale
+        self.update_scaled_image()
+        tinted_image = self.image.copy()
+        tinted_image.fill((255, 0, 0), special_flags=pygame.BLEND_ADD)  # Apply red tint
+        self.image = tinted_image  # Assign the tinted image as current
 
         if self.hp <= 0:
-            player.gain_xp(self.xp_reward)  # Player gains XP when the enemy is killed
+            player.gain_xp(self.xp_reward)
             print(f"Player gained {self.xp_reward} XP for killing {self.__class__.__name__}")
             self.kill()  # Remove the enemy when HP reaches 0
 
     def update(self):
-        """Update the enemy, handle blinking state."""
         # Handle blinking effect
         if self.is_blinking:
             current_time = pygame.time.get_ticks()
             if current_time - self.blink_start_time > self.blink_duration:
                 self.is_blinking = False
-                # Restore the original image and reapply the correct flip (direction)
-                if self.direction == 'left':
-                    self.image = pygame.transform.flip(self.original_image, True, False)  # Face left again
-                else:
-                    self.image = self.original_image  # Face right
+                # Restore the original image while keeping the miniaturization scale
+                self.update_scaled_image()
 
+    def apply_miniaturization(self, scale_factor):
+        """Shrink an enemy's image and rect by a new scale factor."""
+        self.cumulative_scale *= scale_factor  # Accumulate the scaling
+        self.update_scaled_image()  # Update the image based on the new scale
+
+    def update_scaled_image(self):
+        """Update the enemy's image and rect based on the current cumulative scale and direction."""
+        new_width = int(self.original_image.get_width() * self.cumulative_scale)
+        new_height = int(self.original_image.get_height() * self.cumulative_scale)
+        self.miniaturized_image = pygame.transform.scale(self.original_image, (new_width, new_height))
+
+        # Adjust the image based on the enemy's current direction
+        if self.direction == 'left':
+            self.image = pygame.transform.flip(self.miniaturized_image, True, False)
+        else:
+            self.image = self.miniaturized_image
+
+        # Adjust rect to match new image size, keeping the center consistent
+        if hasattr(self, 'rect'):
+            center = self.rect.center
+        else:
+            center = None
+        self.rect = self.image.get_rect()
+        if center is not None:
+            self.rect.center = center
 
 
 # Define the Slime class (inherits from Enemy) ----------------------------
 class Slime(Enemy):
-    def __init__(self):
-        super().__init__('Pictures/Slime.png', speed=2, hp=10, damage=10, xp_reward=10)  # Set slime's damage to 10
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/Slime.png', speed=2, hp=10, damage=10, xp_reward=10, cumulative_scale=cumulative_scale)  # Set slime's damage to 10
         self.spawn_within_screen()
 
 class BlueSlime(Enemy):
-    def __init__(self):
-        super().__init__('Pictures/BlueSlime.png', speed=3, hp=15, damage=15, xp_reward=20)  # Set blue slime's damage to 15
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/BlueSlime.png', speed=3, hp=15, damage=15, xp_reward=20, cumulative_scale=cumulative_scale)  # Set blue slime's damage to 15
         self.spawn_within_screen()
 
 class Golem(Enemy):
-    def __init__(self):
-        super().__init__('Pictures/Golem.png', speed=2, hp=100, damage=50, xp_reward=50)  # Make sure to inherit properly
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/Golem.png', speed=2, hp=100, damage=50, xp_reward=50, cumulative_scale=cumulative_scale)  # Make sure to inherit properly
         self.spawn_within_screen()
 
 
 class FastFish(Enemy):
-    def __init__(self):
-        super().__init__('Pictures/FastFish.png', speed=5, hp=5, damage=5, xp_reward=150)  # Set fast fish's damage to 5
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/FastFish.png', speed=5, hp=5, damage=5, xp_reward=150, cumulative_scale=cumulative_scale)  # Set fast fish's damage to 5
         self.spawn_within_screen()
 
 class OrangeSlime(Enemy):
-    def __init__(self):
-        super().__init__('Pictures/OrangeSlime.png', speed=3, hp=150, damage=25, xp_reward=100)
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/OrangeSlime.png', speed=3, hp=150, damage=25, xp_reward=100, cumulative_scale=cumulative_scale)
         self.spawn_within_screen()
 
 class ZapOrb(Enemy):
-    def __init__(self):
-        super().__init__('Pictures/ZapOrb.png', speed=2, hp=300, damage=50, xp_reward=200)
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/ZapOrb.png', speed=2, hp=300, damage=50, xp_reward=200, cumulative_scale=cumulative_scale)
         self.spawn_within_screen()
 
 
@@ -622,10 +669,9 @@ def spawn_random_enemies(player):
         for _ in range(count):
             new_enemy = EnemyClass()
             if player.is_miniaturized:
-                apply_miniaturization(new_enemy, player.miniaturization_scale)
+                apply_miniaturization(new_enemy, player.cumulative_scale)
             enemies.add(new_enemy)
             all_sprites.add(new_enemy)
-
 
 def spawn_boss_enemies(player):
     """Spawn boss enemies based on the player's level and the boss enemy pool."""
@@ -647,12 +693,10 @@ def spawn_boss_enemies(player):
         for _ in range(count):
             new_boss = BossClass()
             if player.is_miniaturized:
-                apply_miniaturization(new_boss, player.miniaturization_scale)
+                apply_miniaturization(new_boss, player.cumulative_scale)
             enemies.add(new_boss)
             all_sprites.add(new_boss)
             print(f"Boss {new_boss.__class__.__name__} spawned!")  # Debugging print
-
-
 
 
 # Replace slimes group with a generic enemies group
@@ -988,8 +1032,8 @@ def increase_attackSpeed(player):
 
 # Increase health and max health
 def increase_health(player):
-    player.max_hp += 20
-    player.hp = min(player.hp + 20, player.max_hp)  # Increase HP up to the new max
+    player.max_hp += 50
+    player.hp = min(player.hp + 50, player.max_hp)  # Increase HP up to the new max
 
 bunger_spawn_count = 0  # Initialize the counter for Bunger Rain upgrade
 
@@ -1025,39 +1069,48 @@ def apply_healing_needle(player):
     needle_count += 1
     print(f"Healing Needle upgrade applied! Healing 50 HP instantly. Current Needles: {needle_count}")
 
-
-# Define the miniaturization effect function
+# Function to shrink player, enemies, and projectiles by 10%
 def miniaturize_entities(player):
     """Shrink player, enemies, and projectiles by 10% consistently."""
     scale_factor = 0.9  # 90% of original size
 
-    # Miniaturize the player
-    player.image = pygame.transform.scale(player.image, (int(player.rect.width * scale_factor), int(player.rect.height * scale_factor)))
-    player.original_image = player.image.copy()  # Update original image for blinking effect
-    player.rect = player.image.get_rect(center=player.rect.center)  # Reposition rect after scaling
+    # Update cumulative scaling factor for player
+    player.cumulative_scale *= scale_factor
 
-    # Set a flag to indicate that miniaturization is active
+    # Miniaturize the player using cumulative scale
+    new_width = int(player.original_image.get_width() * player.cumulative_scale)
+    new_height = int(player.original_image.get_height() * player.cumulative_scale)
+    player.image = pygame.transform.scale(player.original_image, (new_width, new_height))
+    player.rect = player.image.get_rect(center=player.rect.center)
+    player.original_image = player.image.copy()
+
+    # Set flag to indicate that miniaturization is active
     player.is_miniaturized = True
-    player.miniaturization_scale = scale_factor
 
     # Miniaturize all existing enemies
     for enemy in enemies:
-        apply_miniaturization(enemy, scale_factor)
+        enemy.apply_miniaturization(scale_factor)
 
     # Miniaturize all current projectiles
     for bullet in bullets:
-        apply_shrink_to_bullet(bullet, scale_factor)
+        bullet.apply_miniaturization(scale_factor)
 
     # Miniaturize the gun
     apply_gun_miniaturization(player, scale_factor)
 
-    print("Miniaturization upgrade applied: all entities scaled down by 10%.")
 
-def apply_miniaturization(enemy, scale_factor):
-    """Shrink an enemy's image and rect by a given scale factor."""
-    enemy.image = pygame.transform.scale(enemy.image, (int(enemy.rect.width * scale_factor), int(enemy.rect.height * scale_factor)))
-    enemy.original_image = enemy.image.copy()  # Update original image for blinking effect
-    enemy.rect = enemy.image.get_rect(center=enemy.rect.center)  # Center the rect after scaling
+def apply_miniaturization(self, scale_factor):
+    """Shrink an enemy's image and rect by a new scale factor."""
+    self.cumulative_scale *= scale_factor  # Accumulate the scaling
+    self.update_scaled_image()  # Update the image based on the new scale
+
+    # Adjust the image based on the enemy's current direction
+    if self.direction == 'left':
+        self.image = pygame.transform.flip(self.miniaturized_image, True, False)
+    else:
+        self.image = self.miniaturized_image
+    self.rect = self.image.get_rect(center=self.rect.center)
+
 
 def apply_shrink_to_bullet(bullet, scale_factor):
     """Apply shrink effect to an individual bullet."""
@@ -1066,9 +1119,17 @@ def apply_shrink_to_bullet(bullet, scale_factor):
 
 def apply_gun_miniaturization(player, scale_factor):
     """Shrink the player's gun image and adjust position."""
-    player.gun_image = pygame.transform.scale(player.gun_image, (int(player.gun_rect.width * scale_factor), int(player.gun_rect.height * scale_factor)))
-    player.gun_rect = player.gun_image.get_rect(center=player.gun_rect.center)
     player.gun_distance_from_player *= scale_factor  # Adjust the gun distance
+
+    # Scale the gun image
+    new_width = int(player.gun.original_image.get_width() * player.cumulative_scale)
+    new_height = int(player.gun.original_image.get_height() * player.cumulative_scale)
+    player.gun_image = pygame.transform.scale(player.gun.original_image, (new_width, new_height))
+    player.gun_rect = player.gun_image.get_rect(center=player.gun_rect.center)
+
+
+
+
 
 
 # Function to swap the player's weapon to Katana
@@ -1093,7 +1154,7 @@ def swap_to_peashooter(player):
 upgrades_pool = [
     Upgrade("Speed Boost", "Increases player's speed by 1.", increase_speed, 'Pictures/Boot.png'),
     Upgrade("Damage Boost", "Increases gun damage by 5.", increase_damage, 'Pictures/DamagePlus.png'),
-    Upgrade("Health Boost", "Increases max health by 20 and heals 20 HP.", increase_health, 'Pictures/HealCross.png'),
+    Upgrade("Health Boost", "Increases max health by 50 and heals 50 HP.", increase_health, 'Pictures/HealCross.png'),
     Upgrade("Bunger Rain", "Bungers will start raining down!", enable_bunger_spawn, 'Pictures/Bunger.png'),
     Upgrade("Attack Speed", "Increases attack speed by 50.", increase_attackSpeed, 'Pictures/AttackSpeed.png'),
     Upgrade("Lollipop Rain", "Lollipops will start raining down!", enable_lollipop_spawn, 'Pictures/Lollipop.png'),
