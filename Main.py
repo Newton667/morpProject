@@ -34,6 +34,7 @@ sky_blue = (135, 206, 235)
 class Gun:
     def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed, spread_angle=0, projectile_count=1, automatic_fire=False, bullet_duration=2000, piercing=False):
         self.name = name
+        self.gun_image_path = image_path  # Store image path for creating new instances
         self.original_image = pygame.image.load(image_path).convert_alpha()
         self.image = self.original_image.copy()
         self.bullet_image = bullet_image
@@ -116,7 +117,12 @@ class Player(pygame.sprite.Sprite):
 
     def equip_gun(self, gun):
         """Equip a new gun and apply player upgrades to it."""
-        self.gun = gun
+        # Create a new gun instance to avoid modifying the global gun
+        self.gun = Gun(
+            gun.name, gun.gun_image_path, gun.bullet_image, gun.damage, gun.fire_rate,
+            gun.bullet_speed, gun.spread_angle, gun.projectile_count, gun.automatic_fire,
+            gun.bullet_duration, gun.piercing
+        )
         self.gun_image = self.gun.image.copy()
         self.gun_rect = self.gun_image.get_rect()
 
@@ -255,7 +261,10 @@ class Player(pygame.sprite.Sprite):
         global enemies, all_sprites
         for level, EnemyClass in enemy_pool:
             if level <= self.level:
-                new_enemy = EnemyClass(cumulative_scale=self.cumulative_scale)
+                new_enemy = EnemyClass()  # Don't pass player's cumulative_scale
+                if self.is_miniaturized:
+                    # Apply enemy cumulative scale to new enemies
+                    new_enemy.apply_miniaturization(self.enemy_cumulative_scale)
                 enemies.add(new_enemy)
                 all_sprites.add(new_enemy)
 
@@ -263,7 +272,9 @@ class Player(pygame.sprite.Sprite):
         global enemies, all_sprites
         for level, BossClass in enemyBoss_pool:
             if level <= self.level:
-                new_boss = BossClass(cumulative_scale=self.cumulative_scale)
+                new_boss = BossClass()
+                if self.is_miniaturized:
+                    new_boss.apply_miniaturization(self.enemy_cumulative_scale)
                 enemies.add(new_boss)
                 all_sprites.add(new_boss)
                 print(f"Boss {new_boss.__class__.__name__} spawned!")
@@ -566,6 +577,7 @@ class Enemy(pygame.sprite.Sprite):
     def apply_miniaturization(self, scale_factor):
         """Shrink an enemy's image and rect by a new scale factor."""
         self.cumulative_scale *= scale_factor  # Accumulate the scaling
+        print(f"Applying miniaturization to {self.__class__.__name__} with scale factor {scale_factor}")
         self.update_scaled_image()  # Update the image based on the new scale
 
     def update_scaled_image(self):
@@ -669,9 +681,10 @@ def spawn_random_enemies(player):
         for _ in range(count):
             new_enemy = EnemyClass()
             if player.is_miniaturized:
-                apply_miniaturization(new_enemy, player.cumulative_scale)
+                new_enemy.apply_miniaturization(player.enemy_cumulative_scale)
             enemies.add(new_enemy)
             all_sprites.add(new_enemy)
+
 
 def spawn_boss_enemies(player):
     """Spawn boss enemies based on the player's level and the boss enemy pool."""
@@ -693,10 +706,11 @@ def spawn_boss_enemies(player):
         for _ in range(count):
             new_boss = BossClass()
             if player.is_miniaturized:
-                apply_miniaturization(new_boss, player.cumulative_scale)
+                new_boss.apply_miniaturization(player.enemy_cumulative_scale)
             enemies.add(new_boss)
             all_sprites.add(new_boss)
             print(f"Boss {new_boss.__class__.__name__} spawned!")  # Debugging print
+
 
 
 # Replace slimes group with a generic enemies group
@@ -1069,13 +1083,21 @@ def apply_healing_needle(player):
     needle_count += 1
     print(f"Healing Needle upgrade applied! Healing 50 HP instantly. Current Needles: {needle_count}")
 
-# Function to shrink player, enemies, and projectiles by 10%
+# Function to apply miniaturization effect
 def miniaturize_entities(player):
-    """Shrink player, enemies, and projectiles by 10% consistently."""
-    scale_factor = 0.9  # 90% of original size
+    global enemies, bullets
+    """Shrink player, enemies, and projectiles by consistent but adjustable scale factors."""
+    player_scale_factor = 0.95  # Shrink player by 5%
+    enemy_scale_factor = 0.9    # Shrink enemies by 10%
+    bullet_scale_factor = player_scale_factor  # Bullets scale with player
 
     # Update cumulative scaling factor for player
-    player.cumulative_scale *= scale_factor
+    player.cumulative_scale *= player_scale_factor
+
+    # Initialize enemy_cumulative_scale if not already
+    if not hasattr(player, 'enemy_cumulative_scale'):
+        player.enemy_cumulative_scale = 1.0
+    player.enemy_cumulative_scale *= enemy_scale_factor
 
     # Miniaturize the player using cumulative scale
     new_width = int(player.original_image.get_width() * player.cumulative_scale)
@@ -1089,27 +1111,28 @@ def miniaturize_entities(player):
 
     # Miniaturize all existing enemies
     for enemy in enemies:
-        enemy.apply_miniaturization(scale_factor)
+        enemy.apply_miniaturization(enemy_scale_factor)
 
     # Miniaturize all current projectiles
     for bullet in bullets:
-        bullet.apply_miniaturization(scale_factor)
+        bullet.apply_miniaturization(bullet_scale_factor)
 
     # Miniaturize the gun
-    apply_gun_miniaturization(player, scale_factor)
+    apply_gun_miniaturization(player, player_scale_factor)
 
 
-def apply_miniaturization(self, scale_factor):
-    """Shrink an enemy's image and rect by a new scale factor."""
-    self.cumulative_scale *= scale_factor  # Accumulate the scaling
-    self.update_scaled_image()  # Update the image based on the new scale
 
-    # Adjust the image based on the enemy's current direction
-    if self.direction == 'left':
-        self.image = pygame.transform.flip(self.miniaturized_image, True, False)
-    else:
-        self.image = self.miniaturized_image
-    self.rect = self.image.get_rect(center=self.rect.center)
+# def apply_miniaturization(self, scale_factor):
+#     """Shrink an enemy's image and rect by a new scale factor."""
+#     self.cumulative_scale *= scale_factor  # Accumulate the scaling
+#     self.update_scaled_image()  # Update the image based on the new scale
+#
+#     # Adjust the image based on the enemy's current direction
+#     if self.direction == 'left':
+#         self.image = pygame.transform.flip(self.miniaturized_image, True, False)
+#     else:
+#         self.image = self.miniaturized_image
+#     self.rect = self.image.get_rect(center=self.rect.center)
 
 
 def apply_shrink_to_bullet(bullet, scale_factor):
@@ -1126,11 +1149,6 @@ def apply_gun_miniaturization(player, scale_factor):
     new_height = int(player.gun.original_image.get_height() * player.cumulative_scale)
     player.gun_image = pygame.transform.scale(player.gun.original_image, (new_width, new_height))
     player.gun_rect = player.gun_image.get_rect(center=player.gun_rect.center)
-
-
-
-
-
 
 # Function to swap the player's weapon to Katana
 def swap_to_katana(player):
@@ -1248,7 +1266,8 @@ def Upgrade_Page(player):
 def reset_game():
     """Reset the game state to its initial configuration."""
     global player, all_sprites, bullets, Pickup, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
-    global bungerSpawn, bunger_spawn_count, lollipopSpawn, lollipop_spawn_count, bandage_count  # Include global upgrade-related variables
+    global bungerSpawn, bunger_spawn_count, lollipopSpawn, lollipop_spawn_count, bandage_count
+    global pistol, katana, shotgun, peashooter  # Include global gun instances
 
     # Clear all sprite groups to ensure no lingering objects
     all_sprites.empty()
@@ -1265,6 +1284,20 @@ def reset_game():
     bandage_count = 0
     needle_count = 0
 
+    # Recreate the guns to reset their attributes
+    pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, fire_rate=400,
+                 bullet_speed=10, spread_angle=1, projectile_count=1, automatic_fire=False,
+                 bullet_duration=2000, piercing=False)
+    katana = Gun("Katana", 'Pictures/Katana.png', 'Pictures/Slash.png', damage=2, fire_rate=250,
+                 bullet_speed=10, spread_angle=20, projectile_count=1, automatic_fire=True,
+                 bullet_duration=100, piercing=True)
+    shotgun = Gun("Shotgun", 'Pictures/Shotgun.png', 'Pictures/Bullet1.png', damage=4, fire_rate=1000,
+                  bullet_speed=10, spread_angle=10, projectile_count=5, automatic_fire=False,
+                  bullet_duration=2000, piercing=False)
+    peashooter = Gun("Peashooter", 'Pictures/Peashooter.png', 'Pictures/Bullet2.png', damage=1, fire_rate=50,
+                     bullet_speed=10, spread_angle=5, projectile_count=1, automatic_fire=True,
+                     bullet_duration=2000, piercing=False)
+
     # Recreate the player instance with default attributes and upgrades reset
     player = Player(640, 360, 'Pictures/Morp.png', pistol)
     player.inventory = {}       # Reset the inventory
@@ -1276,8 +1309,7 @@ def reset_game():
 
     # Reset gun's base damage and fire rate to the default weapon values
     player.gun_base_damage = pistol.damage  # Use the initial gun's damage as the base value
-    player.gun.damage = player.gun_base_damage
-    player.gun.fire_rate = player.gun_base_fire_rate
+    player.gun_base_fire_rate = pistol.fire_rate  # Reset base fire rate
     player.apply_upgrades_to_gun()  # Ensure gun is reset with no upgrades
 
     all_sprites.add(player)  # Add player to the all_sprites group
@@ -1285,8 +1317,8 @@ def reset_game():
     # Reset the sprite groups
     bullets = pygame.sprite.Group()
     Pickup = pygame.sprite.Group()
-    enemies = pygame.sprite.Group()  # Use a general enemies group instead of slimes
-    obstacles = pygame.sprite.Group()  # Recreate the group for obstacles (currently empty)
+    enemies = pygame.sprite.Group()
+    obstacles = pygame.sprite.Group()
 
     # Reset the game timer
     start_time = pygame.time.get_ticks()
@@ -1294,8 +1326,14 @@ def reset_game():
     pause_start_time = None
 
     # Reset paused and player dead states
-    paused = False  # Reset paused state when the game is restarted
-    player_dead = False  # Reset player dead status
+    paused = False
+    player_dead = False
+
+    # Reset miniaturization attributes
+    player.is_miniaturized = False
+    player.cumulative_scale = 1.0
+    if hasattr(player, 'enemy_cumulative_scale'):
+        player.enemy_cumulative_scale = 1.0
 
 
 #Death Game Over function ------------------------------------------------
