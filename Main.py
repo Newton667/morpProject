@@ -634,6 +634,11 @@ class ZapOrb(Enemy):
         super().__init__('Pictures/ZapOrb.png', speed=2, hp=300, damage=50, xp_reward=200, cumulative_scale=cumulative_scale)
         self.spawn_within_screen()
 
+class RedSlime(Enemy):
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/RedSlime.png', speed=2, hp=400, damage=30, xp_reward=300, cumulative_scale=cumulative_scale)
+        self.spawn_within_screen()
+
 
 
 # Enemy pool where each entry is a tuple of (level, EnemyClass)
@@ -646,6 +651,9 @@ enemy_pool = [
     (8, BlueSlime),
     (9, ZapOrb),
     (10, FastFish),
+    (11, RedSlime),
+    (12, RedSlime),
+    (13, OrangeSlime),
     # Add more enemy types for higher levels
 ]
 
@@ -784,7 +792,7 @@ katana = Gun("Katana", 'Pictures/Katana.png', 'Pictures/Slash.png', damage=2, fi
 shotgun = Gun("Shotgun", 'Pictures/Shotgun.png', 'Pictures/Bullet1.png', damage=4, fire_rate=1000, bullet_speed=10, spread_angle=10, projectile_count=5, automatic_fire=False, bullet_duration=2000, piercing=False)
 peashooter = Gun("Peashooter", 'Pictures/Peashooter.png', 'Pictures/Bullet2.png', damage=1, fire_rate=50, bullet_speed=10, spread_angle=5, projectile_count=1, automatic_fire=True, bullet_duration=2000, piercing=False)
 voidbook = Gun("Voidbook", 'Pictures/VoidBook.png', 'Pictures/VoidOrb.png', damage=1, fire_rate=2000,
-               bullet_speed=1.5, spread_angle=1, projectile_count=1, automatic_fire=False, bullet_duration=3000,
+               bullet_speed=1.5, spread_angle=1, projectile_count=1, automatic_fire=False, bullet_duration=4000,
                piercing=True)
 
 # Create the player instance with the pistol gun
@@ -1306,7 +1314,7 @@ def reset_game():
                      bullet_speed=10, spread_angle=5, projectile_count=1, automatic_fire=True,
                      bullet_duration=2000, piercing=False)
     voidbook = Gun("Voidbook", 'Pictures/VoidBook.png', 'Pictures/VoidOrb.png', damage=1, fire_rate=2000,
-                   bullet_speed=1.5, spread_angle=1, projectile_count=1, automatic_fire=False, bullet_duration=3000,
+                   bullet_speed=1.5, spread_angle=1, projectile_count=1, automatic_fire=False, bullet_duration=4000,
                    piercing=True)
 
     # Recreate the player instance with default attributes and upgrades reset
