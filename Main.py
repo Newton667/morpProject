@@ -145,6 +145,9 @@ class Player(pygame.sprite.Sprite):
         self.gun.damage = self.gun_base_damage + self.base_damage
         self.gun.fire_rate = max(100, self.gun_base_fire_rate - self.base_fire_rate)  # Ensures minimum fire rate
 
+        # Update turrets
+        for turret in turrets:
+            turret.apply_upgrades()
 
     def update(self, keys, obstacles, Pickup, Bunger, slimes, screen_width, screen_height, mouse_pos, mouse_held, Lollipop):
         # Movement logic with WASD keys
@@ -724,6 +727,10 @@ def spawn_boss_enemies(player):
 # Replace slimes group with a generic enemies group
 enemies = pygame.sprite.Group()
 
+# Initialize the turrets group
+turrets = pygame.sprite.Group()
+
+
 # In the game loop, spawn slimes and other enemies:
 # Example for slime:
 """
@@ -791,9 +798,168 @@ pistol = Gun("Pistol", 'Pictures/Pistol.png', 'Pictures/Bullet1.png', damage=5, 
 katana = Gun("Katana", 'Pictures/Katana.png', 'Pictures/Slash.png', damage=2, fire_rate=250, bullet_speed=10, spread_angle=20, projectile_count=1, automatic_fire=True, bullet_duration=100, piercing=True)
 shotgun = Gun("Shotgun", 'Pictures/Shotgun.png', 'Pictures/Bullet1.png', damage=4, fire_rate=1000, bullet_speed=10, spread_angle=10, projectile_count=5, automatic_fire=False, bullet_duration=2000, piercing=False)
 peashooter = Gun("Peashooter", 'Pictures/Peashooter.png', 'Pictures/Bullet2.png', damage=1, fire_rate=50, bullet_speed=10, spread_angle=5, projectile_count=1, automatic_fire=True, bullet_duration=2000, piercing=False)
-voidbook = Gun("Voidbook", 'Pictures/VoidBook.png', 'Pictures/VoidOrb.png', damage=1, fire_rate=2000,
-               bullet_speed=1.5, spread_angle=1, projectile_count=1, automatic_fire=False, bullet_duration=4000,
-               piercing=True)
+voidbook = Gun("Voidbook", 'Pictures/VoidBook.png', 'Pictures/VoidOrb.png', damage=1, fire_rate=2000,bullet_speed=1.5, spread_angle=1, projectile_count=1, automatic_fire=False, bullet_duration=4000, piercing=True)
+
+#Turret class ------------------------------------------------
+
+class TurretType:
+    def __init__(self, name, image_path, bullet_image, damage, fire_rate, bullet_speed,
+                 spread_angle=0, projectile_count=1, piercing=False, bullet_duration=2000):
+        self.name = name
+        self.image_path = image_path  # Path to the turret's image
+        self.original_image = pygame.image.load(image_path).convert_alpha()
+        self.bullet_image = bullet_image  # Path to the bullet image
+        self.damage = damage
+        self.fire_rate = fire_rate  # Cooldown between shots in milliseconds
+        self.bullet_speed = bullet_speed
+        self.spread_angle = spread_angle  # Spread angle for bullets
+        self.projectile_count = projectile_count  # Number of projectiles fired at once
+        self.piercing = piercing  # Whether projectiles can pierce through enemies
+        self.bullet_duration = bullet_duration  # Duration of each projectile in milliseconds
+
+class Turret(pygame.sprite.Sprite):
+    def __init__(self, x, y, turret_type, player):
+        super().__init__()
+        self.player = player  # Reference to the player to access upgrades
+        self.turret_type = turret_type  # The type of turret
+        self.original_image = turret_type.original_image.copy()
+        self.scaled_image = self.original_image.copy()  # Initialize scaled_image
+        self.image = self.scaled_image.copy()
+        self.rect = self.image.get_rect(center=(x, y))
+
+        # Turret attributes
+        self.base_damage = turret_type.damage  # Base damage
+        self.base_fire_rate = turret_type.fire_rate  # Base fire rate in milliseconds
+        self.bullet_speed = turret_type.bullet_speed  # Speed of the bullets
+        self.last_shot_time = 0  # Last time the turret fired
+
+        # Bullet properties
+        self.bullet_image = turret_type.bullet_image
+        self.spread_angle = turret_type.spread_angle
+        self.projectile_count = turret_type.projectile_count
+        self.piercing = turret_type.piercing
+        self.bullet_duration = turret_type.bullet_duration
+
+        # Rotation variables
+        self.angle = 0  # Current rotation angle
+
+        # Miniaturization attributes
+        self.cumulative_scale = 1.0  # Start with normal scale
+        self.is_miniaturized = False
+
+        # Apply player upgrades initially
+        self.apply_upgrades()
+
+    def apply_upgrades(self):
+        """Apply the player's damage and attack speed upgrades to the turret."""
+        self.damage = self.base_damage + self.player.base_damage
+        self.fire_rate = max(100, self.base_fire_rate - self.player.base_fire_rate)
+
+    def apply_miniaturization(self, scale_factor):
+        """Apply miniaturization effect to the turret."""
+        self.cumulative_scale *= scale_factor
+        new_width = int(self.original_image.get_width() * self.cumulative_scale)
+        new_height = int(self.original_image.get_height() * self.cumulative_scale)
+        self.scaled_image = pygame.transform.scale(self.original_image, (new_width, new_height))
+        self.image = self.scaled_image
+        self.rect = self.image.get_rect(center=self.rect.center)
+
+    def update(self):
+        """Update the turret's rotation and shooting."""
+        # Apply upgrades
+        self.apply_upgrades()
+
+        # Find the nearest enemy
+        if enemies:
+            nearest_enemy = min(enemies, key=lambda enemy: self.get_distance(enemy))
+            # Calculate the angle to the enemy
+            rel_x, rel_y = nearest_enemy.rect.centerx - self.rect.centerx, nearest_enemy.rect.centery - self.rect.centery
+            angle = math.degrees(math.atan2(-rel_y, rel_x))
+            self.angle = angle
+            # Rotate the turret image using the scaled image
+            rotated_image = pygame.transform.rotate(self.scaled_image, angle)
+            self.image = rotated_image
+            self.rect = self.image.get_rect(center=self.rect.center)
+
+            # Shooting
+            current_time = pygame.time.get_ticks()
+            if current_time - self.last_shot_time >= self.fire_rate:
+                self.shoot(nearest_enemy)
+                self.last_shot_time = current_time
+
+    def get_distance(self, enemy):
+        dx = enemy.rect.centerx - self.rect.centerx
+        dy = enemy.rect.centery - self.rect.centery
+        return math.hypot(dx, dy)
+
+    def shoot(self, target):
+        """Shoot bullet(s) at the target."""
+        # Calculate base angle to target
+        rel_x, rel_y = target.rect.centerx - self.rect.centerx, target.rect.centery - self.rect.centery
+        base_angle = math.atan2(-rel_y, rel_x)
+
+        bullets_fired = []
+        spread_radians = math.radians(self.spread_angle)
+
+        if self.projectile_count == 1:
+            # Single projectile with possible random spread
+            spread_offset = random.uniform(-spread_radians / 2, spread_radians / 2)
+            angle = base_angle + spread_offset
+            direction = (math.cos(angle), -math.sin(angle))
+            bullet = Projectile(
+                self.rect.center, direction,
+                self.bullet_image, self.bullet_speed,
+                self.damage, self.bullet_duration,
+                piercing=self.piercing,
+                cumulative_scale=self.cumulative_scale
+            )
+            bullets_fired.append(bullet)
+        else:
+            # Multiple projectiles with spread
+            start_angle = base_angle - spread_radians * (self.projectile_count - 1) / 2
+            for i in range(self.projectile_count):
+                angle = start_angle + i * spread_radians
+                direction = (math.cos(angle), -math.sin(angle))
+                bullet = Projectile(
+                    self.rect.center, direction,
+                    self.bullet_image, self.bullet_speed,
+                    self.damage, self.bullet_duration,
+                    piercing=self.piercing,
+                    cumulative_scale=self.cumulative_scale
+                )
+                bullets_fired.append(bullet)
+
+        for bullet in bullets_fired:
+            bullets.add(bullet)
+            all_sprites.add(bullet)
+
+# Create turret types ------------------------------------------------
+
+# Create turret types
+mg_turret_type = TurretType(
+    "MG Turret",
+    'Pictures/MGturret.png',
+    'Pictures/Bullet1.png',
+    damage=5,
+    fire_rate=500,
+    bullet_speed=10,
+    spread_angle=0,
+    projectile_count=1,
+    piercing=False
+)
+
+sniper_turret_type = TurretType(
+    "Sniper Turret",
+    'Pictures/Sniperturret.png',
+    'Pictures/Bullet3.png',
+    damage=20,
+    fire_rate=2000,
+    bullet_speed=75,
+    spread_angle=0,
+    projectile_count=1,
+    piercing=True
+)
+
 
 # Create the player instance with the pistol gun
 player = Player(640, 360, 'Pictures/Morp.png', pistol)
@@ -1094,10 +1260,11 @@ def apply_healing_needle(player):
     needle_count += 1
     print(f"Healing Needle upgrade applied! Healing 50 HP instantly. Current Needles: {needle_count}")
 
-# Function to apply miniaturization effect
+
+# Function to apply miniaturization effect to all entities
 def miniaturize_entities(player):
-    global enemies, bullets
-    """Shrink player, enemies, and projectiles by consistent but adjustable scale factors."""
+    global enemies, bullets, turrets
+    """Shrink player, enemies, turrets, and projectiles by consistent but adjustable scale factors."""
     player_scale_factor = 0.95  # Shrink player by 5%
     enemy_scale_factor = 0.9    # Shrink enemies by 10%
     bullet_scale_factor = player_scale_factor  # Bullets scale with player
@@ -1127,6 +1294,10 @@ def miniaturize_entities(player):
     # Miniaturize all current projectiles
     for bullet in bullets:
         bullet.apply_miniaturization(bullet_scale_factor)
+
+    # Miniaturize all existing turrets
+    for turret in turrets:
+        turret.apply_miniaturization(player_scale_factor)
 
     # Miniaturize the gun
     apply_gun_miniaturization(player, player_scale_factor)
@@ -1161,6 +1332,8 @@ def apply_gun_miniaturization(player, scale_factor):
     player.gun_image = pygame.transform.scale(player.gun.original_image, (new_width, new_height))
     player.gun_rect = player.gun_image.get_rect(center=player.gun_rect.center)
 
+# Weapon Upgrades ------------------------------------------------
+
 # Function to swap the player's weapon to Katana
 def swap_to_katana(player):
     player.equip_gun(katana)
@@ -1182,6 +1355,17 @@ def swap_to_voidbook(player):
     player.equip_gun(voidbook)
     print("Player swapped to Voidbook!")
 
+# turret upgrades ------------------------------------------------
+
+def deploy_turret(player, turret_type):
+    # Create a turret at the player's position
+    turret = Turret(player.rect.centerx, player.rect.centery, turret_type, player)
+    turrets.add(turret)
+    all_sprites.add(turret)
+
+    # Add the turret to the player's inventory
+    player.add_upgrade_to_inventory(turret_type.name, turret_type.original_image)
+
 
 # Upgrade Pool
 upgrades_pool = [
@@ -1199,6 +1383,8 @@ upgrades_pool = [
     Upgrade("Bandage", "Heals 10 HP every 10 seconds. Stacks with each upgrade.", apply_bandage, 'Pictures/Bandage.png'),
     Upgrade("Healing Needle", "Heals 1 HP every 1 second. Stacks with each upgrade.", apply_healing_needle, 'Pictures/Needle.png'),
     Upgrade("Voidbook", "Swap to the Voidbook weapon!", swap_to_voidbook, 'Pictures/VoidBook.png'),
+    Upgrade("Deploy MG Turret", "Deploys an MG Turret that shoots at enemies.", lambda player: deploy_turret(player, mg_turret_type), 'Pictures/MGturret.png'),
+    Upgrade("Deploy Sniper Turret", "Deploys a Sniper Turret that deals high damage to enemies.", lambda player: deploy_turret(player, sniper_turret_type), 'Pictures/Sniperturret.png')
 ]
 
 
@@ -1281,8 +1467,9 @@ def Upgrade_Page(player):
 # Reset the game state ------------------------------------------------
 def reset_game():
     """Reset the game state to its initial configuration."""
-    global player, all_sprites, bullets, Pickup, enemies, obstacles, start_time, total_paused_time, pause_start_time, paused, player_dead
-    global bungerSpawn, bunger_spawn_count, lollipopSpawn, lollipop_spawn_count, bandage_count
+    global player, all_sprites, bullets, Pickup, enemies, obstacles, turrets
+    global start_time, total_paused_time, pause_start_time, paused, player_dead
+    global bungerSpawn, bunger_spawn_count, lollipopSpawn, lollipop_spawn_count, bandage_count, needle_count
     global pistol, katana, shotgun, peashooter, voidbook  # Include global gun instances
 
     # Clear all sprite groups to ensure no lingering objects
@@ -1291,6 +1478,7 @@ def reset_game():
     Pickup.empty()
     enemies.empty()
     obstacles.empty()
+    turrets.empty()  # Properly clear the turrets group
 
     # Reset global upgrade flags and counters
     bungerSpawn = False
@@ -1338,6 +1526,7 @@ def reset_game():
     Pickup = pygame.sprite.Group()
     enemies = pygame.sprite.Group()
     obstacles = pygame.sprite.Group()
+    turrets = pygame.sprite.Group()
 
     # Reset the game timer
     start_time = pygame.time.get_ticks()
@@ -1592,6 +1781,9 @@ while running:
                     title_screen()
                     paused = False
                 player_dead = False
+
+            # Update and move all turrets
+            turrets.update()
 
             # Update and move all enemies
             for enemy in enemies:
