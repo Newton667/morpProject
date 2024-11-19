@@ -960,6 +960,18 @@ sniper_turret_type = TurretType(
     piercing=True
 )
 
+void_crystal = TurretType(
+    "Void Crystal",
+    'Pictures/VoidCrystal.png',
+    'Pictures/VoidOrb.png',
+    damage=1,
+    fire_rate=2000,
+    bullet_speed=1.5,
+    spread_angle=0,
+    projectile_count=1,
+    piercing=True
+)
+
 
 # Create the player instance with the pistol gun
 player = Player(640, 360, 'Pictures/Morp.png', pistol)
@@ -1384,7 +1396,8 @@ upgrades_pool = [
     Upgrade("Healing Needle", "Heals 1 HP every 1 second. Stacks with each upgrade.", apply_healing_needle, 'Pictures/Needle.png'),
     Upgrade("Voidbook", "Swap to the Voidbook weapon!", swap_to_voidbook, 'Pictures/VoidBook.png'),
     Upgrade("Deploy MG Turret", "Deploys an MG Turret that shoots at enemies.", lambda player: deploy_turret(player, mg_turret_type), 'Pictures/MGturret.png'),
-    Upgrade("Deploy Sniper Turret", "Deploys a Sniper Turret that deals high damage to enemies.", lambda player: deploy_turret(player, sniper_turret_type), 'Pictures/Sniperturret.png')
+    Upgrade("Deploy Sniper Turret", "Deploys a Sniper Turret that deals high damage to enemies.", lambda player: deploy_turret(player, sniper_turret_type), 'Pictures/Sniperturret.png'),
+    Upgrade("Deploy Void Crystal", "Deploys a Void Crystal that shoots slow but piercing orbs.", lambda player: deploy_turret(player, void_crystal), 'Pictures/VoidCrystal.png')
 ]
 
 
@@ -1393,6 +1406,9 @@ import random
 def select_random_upgrades(upgrades_pool, count=4):
     return random.sample(upgrades_pool, min(count, len(upgrades_pool)))
 
+# Function to select random upgrades from the pool
+def select_random_upgrades(upgrades_pool, count=4):
+    return random.sample(upgrades_pool, min(count, len(upgrades_pool)))
 
 def Upgrade_Page(player):
     """Upgrade page that appears on leveling up."""
@@ -1400,6 +1416,7 @@ def Upgrade_Page(player):
     button_height = 40
     selected_upgrades = select_random_upgrades(upgrades_pool, 4)  # Shows up to 4 upgrade options
     logo_size = (64, 64)  # Size of the logos
+    refresh_used = False  # Track if refresh button has been used
 
     # Create a semi-transparent surface for the frosted effect
     transparent_surface = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -1410,11 +1427,14 @@ def Upgrade_Page(player):
     for i, upgrade in enumerate(selected_upgrades):
         button_rect = pygame.Rect(
             width // 2 - button_width // 2,
-            height // 2 - 100 + i * (logo_size[1] + button_height + 30),
+            height // 2 - 200 + i * (logo_size[1] + button_height + 30),  # Shifted up more
             button_width,
             button_height
         )
         upgrade_buttons.append((button_rect, upgrade))
+
+    # Define the refresh button, positioned further down
+    refresh_button = pygame.Rect(width // 2 - button_width // 2, height // 2 + 250, button_width, button_height)
 
     while True:
         # First, draw the game state underneath
@@ -1428,7 +1448,7 @@ def Upgrade_Page(player):
 
         # Draw the title "Choose Your Upgrade"
         title_text = title_font.render('Choose Your Upgrade', True, white)
-        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 220))
+        title_rect = title_text.get_rect(center=(width // 2, height // 2 - 300))  # Adjusted further up
         screen.blit(title_text, title_rect)
 
         # Draw the logos, descriptions, and buttons for each upgrade
@@ -1448,6 +1468,13 @@ def Upgrade_Page(player):
             button_text = font.render(upgrade.name, True, black)
             screen.blit(button_text, (button_rect.x + 10, button_rect.y + 5))
 
+        # Draw the refresh button if it hasn't been used yet
+        if not refresh_used:
+            pygame.draw.rect(screen, sky_blue, refresh_button)
+            refresh_text = font.render('Refresh', True, black)
+            refresh_text_rect = refresh_text.get_rect(center=refresh_button.center)
+            screen.blit(refresh_text, refresh_text_rect)
+
         # Only one call to update the display
         pygame.display.flip()
 
@@ -1457,10 +1484,25 @@ def Upgrade_Page(player):
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN:
+                # Check for upgrade button clicks
                 for button_rect, upgrade in upgrade_buttons:
                     if button_rect.collidepoint(event.pos):
                         upgrade.apply(player)  # Apply the selected upgrade
                         return  # Exit the upgrade page after selection
+
+                # Handle refresh button click if not used
+                if refresh_button.collidepoint(event.pos) and not refresh_used:
+                    selected_upgrades = select_random_upgrades(upgrades_pool, 4)  # Refresh upgrades
+                    upgrade_buttons = []  # Clear old buttons
+                    for i, upgrade in enumerate(selected_upgrades):
+                        button_rect = pygame.Rect(
+                            width // 2 - button_width // 2,
+                            height // 2 - 200 + i * (logo_size[1] + button_height + 30),  # Adjusted position
+                            button_width,
+                            button_height
+                        )
+                        upgrade_buttons.append((button_rect, upgrade))
+                    refresh_used = True  # Disable further use of refresh
 
 
 
