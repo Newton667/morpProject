@@ -621,6 +621,10 @@ class Golem(Enemy):
         super().__init__('Pictures/Golem.png', speed=2, hp=100, damage=50, xp_reward=50, cumulative_scale=cumulative_scale)  # Make sure to inherit properly
         self.spawn_within_screen()
 
+class VoidSlime(Enemy):
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/VoidSlime.png', speed=3, hp=1000, damage=50, xp_reward=2000, cumulative_scale=cumulative_scale)  # Make sure to inherit properly
+        self.spawn_within_screen()
 
 class FastFish(Enemy):
     def __init__(self, cumulative_scale=1.0):
@@ -664,6 +668,7 @@ enemy_pool = [
     (8, Slime),
     (8, Slime),
     (8, Slime),
+    (9, LiveCandy),
     (10, OrangeSlime),
     (11, BlueSlime),
     (12, OrangeSlime),
@@ -685,6 +690,7 @@ enemy_pool = [
 
 enemyBoss_pool = [
     (6, Golem),
+    (20, VoidSlime),
 ]
 
 def get_available_enemies(level):
