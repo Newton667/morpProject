@@ -629,7 +629,7 @@ class FastFish(Enemy):
 
 class OrangeSlime(Enemy):
     def __init__(self, cumulative_scale=1.0):
-        super().__init__('Pictures/OrangeSlime.png', speed=3, hp=150, damage=25, xp_reward=100, cumulative_scale=cumulative_scale)
+        super().__init__('Pictures/OrangeSlime.png', speed=3, hp=100, damage=25, xp_reward=100, cumulative_scale=cumulative_scale)
         self.spawn_within_screen()
 
 class ZapOrb(Enemy):
@@ -639,9 +639,18 @@ class ZapOrb(Enemy):
 
 class RedSlime(Enemy):
     def __init__(self, cumulative_scale=1.0):
-        super().__init__('Pictures/RedSlime.png', speed=2, hp=400, damage=30, xp_reward=300, cumulative_scale=cumulative_scale)
+        super().__init__('Pictures/RedSlime.png', speed=2, hp=150, damage=30, xp_reward=300, cumulative_scale=cumulative_scale)
         self.spawn_within_screen()
 
+class LiveCandy(Enemy):
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/LiveCandy.png', speed=2, hp=100, damage=50, xp_reward=500, cumulative_scale=cumulative_scale)
+        self.spawn_within_screen()
+
+class LiveCandy2(Enemy):
+    def __init__(self, cumulative_scale=1.0):
+        super().__init__('Pictures/LiveCandy2.png', speed=2, hp=200, damage=50, xp_reward=1000, cumulative_scale=cumulative_scale)
+        self.spawn_within_screen()
 
 
 # Enemy pool where each entry is a tuple of (level, EnemyClass)
@@ -650,13 +659,27 @@ enemy_pool = [
     (2, Slime),  # Add more enemy types for higher levels
     (4, BlueSlime),
     (5, Slime),
-    (7, OrangeSlime),
-    (8, BlueSlime),
-    (9, ZapOrb),
-    (10, FastFish),
-    (11, RedSlime),
-    (12, RedSlime),
+    (6, Slime),
+    (7, BlueSlime),
+    (8, Slime),
+    (8, Slime),
+    (8, Slime),
+    (10, OrangeSlime),
+    (11, BlueSlime),
+    (12, OrangeSlime),
     (13, OrangeSlime),
+    (13, LiveCandy),
+    (14, ZapOrb),
+    (14, LiveCandy),
+    (15, FastFish),
+    (15, LiveCandy2),
+    (16, RedSlime),
+    (17, RedSlime),
+    (17, LiveCandy2),
+    (18, OrangeSlime),
+    (19, ZapOrb),
+    (20, RedSlime),
+
     # Add more enemy types for higher levels
 ]
 
@@ -941,9 +964,9 @@ mg_turret_type = TurretType(
     'Pictures/MGturret.png',
     'Pictures/Bullet1.png',
     damage=5,
-    fire_rate=500,
+    fire_rate=300,
     bullet_speed=10,
-    spread_angle=0,
+    spread_angle=1,
     projectile_count=1,
     piercing=False
 )
